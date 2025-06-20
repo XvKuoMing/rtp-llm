@@ -8,8 +8,8 @@ import pytest_asyncio
 import contextlib
 import wave
 
-from src.vad import VoiceState, WebRTCVAD, SileroVAD
-from src.utils.audio_processing import resample_pcm16
+from src.rtp_llm.vad import VoiceState, WebRTCVAD, SileroVAD
+from src.rtp_llm.utils.audio_processing import resample_pcm16
 from typing import Tuple
 
 @pytest.fixture

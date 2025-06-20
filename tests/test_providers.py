@@ -5,7 +5,7 @@ import asyncio
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
-from src.providers import OpenAIProvider, AstLLmProvider, TextOpenAIMessage, Message
+from src.rtp_llm.providers import OpenAIProvider, AstLLmProvider, TextOpenAIMessage, Message
 from dotenv import load_dotenv
 import logging
 
