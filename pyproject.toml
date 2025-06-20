@@ -1,0 +1,35 @@
+[project]
+name = "rtp-llm"
+version = "0.1.0"
+description = "simple building blocks for creating real-time agents"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi==0.115.12",
+    "google-genai==1.14.0",
+    "jinja2==3.1.6",
+    "numpy>=1.22",
+    "openai==1.76.0",
+    "pydantic==2.11.3",
+    "scipy>=1.10",
+    "setuptools==80.0.1",
+    "silero-vad>=5.1.2",
+    "soundfile==0.13.1",
+    "uvicorn==0.34.2",
+    "webrtcvad==2.0.10",
+    # Conditional dependencies using environment markers # audiopp was deprecated in python 3.13
+    "audioop-lts; python_version>='3.13'",
+    "librosa>=0.11.0",
+    "resampy>=0.4.3",
+]
+
+# Optional dependencies (extras)
+[project.optional-dependencies]
+# if user wants to run tests locally
+tests = [
+    "pytest>=8.4.0",
+    "pytest-asyncio>=1.0.0",
+    "httpx>=0.28.1",
+    "python-dotenv==1.1.0"
+]
+
