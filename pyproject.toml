@@ -64,6 +64,7 @@ serve-rtp = "entrypoints.singleton_api:main"
 # setuptools configuration
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["rtp_llm*", "entrypoints*"]
 namespaces = false
 
 [tool.setuptools.package-data]

@@ -335,7 +335,7 @@ def main():
     
     import uvicorn
     uvicorn.run(
-        "entrypoints.singleton_api:app",
+        app,
         host=args.host,
         port=args.port,
         log_level=args.log_level,
