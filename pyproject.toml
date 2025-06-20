@@ -11,12 +11,11 @@ requires-python = ">=3.11"
 authors = [
     {name = "XvKuoMing", email = "kamasalyamov@gmail.com"}
 ]
-license = {text = "MIT"}
+license = "MIT"
 keywords = ["rtp", "voice", "ai", "real-time", "agent"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -63,9 +62,6 @@ serve-rtp = "rtp_llm.entrypoints.singleton_api:main"
 "Source" = "https://github.com/XvKuoMing/rtp-llm.git"
 
 # setuptools configuration
-[tool.setuptools]
-package-dir = {"rtp_llm" = "src"}
-
 [tool.setuptools.packages.find]
 where = ["src"]
 namespaces = false
