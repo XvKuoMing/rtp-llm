@@ -53,7 +53,7 @@ tests = [
 
 # CLI entry points
 [project.scripts]
-serve-rtp = "rtp_llm.entrypoints.singleton_api:main"
+serve-rtp = "entrypoints.singleton_api:main"
 
 # Package URLs
 [project.urls]
