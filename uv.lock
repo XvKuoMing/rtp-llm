@@ -1149,7 +1149,7 @@ wheels = [
 [[package]]
 name = "rtp-llm"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "audioop-lts", marker = "python_full_version >= '3.13'" },
     { name = "fastapi" },
@@ -1159,6 +1159,7 @@ dependencies = [
     { name = "numpy" },
     { name = "openai" },
     { name = "pydantic" },
+    { name = "python-dotenv" },
     { name = "resampy" },
     { name = "scipy" },
     { name = "setuptools" },
@@ -1189,6 +1190,7 @@ requires-dist = [
     { name = "pydantic", specifier = "==2.11.3" },
     { name = "pytest", marker = "extra == 'tests'", specifier = ">=8.4.0" },
     { name = "pytest-asyncio", marker = "extra == 'tests'", specifier = ">=1.0.0" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "python-dotenv", marker = "extra == 'tests'", specifier = "==1.1.0" },
     { name = "resampy", specifier = ">=0.4.3" },
     { name = "scipy", specifier = ">=1.10" },
