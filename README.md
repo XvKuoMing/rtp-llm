@@ -88,6 +88,26 @@ uv add "git+https://github.com/yourusername/rtp-llm[tests]"
 pip install "git+https://github.com/yourusername/rtp-llm[tests]"
 ```
 
+### Running the Server
+
+Once installed, you can start the RTP-LLM server using the `serve-rtp` command:
+
+```bash
+# Basic usage - starts server on localhost:8000
+serve-rtp
+
+# Specify host and port
+serve-rtp --host 0.0.0.0 --port 8000
+
+# Show all available options
+serve-rtp --help
+```
+
+The server provides a REST API to manage RTP voice sessions. Once running, you can:
+- Start RTP sessions via `POST /start`
+- Check status via `GET /status` 
+- Stop sessions via `POST /stop`
+
 ### Environment Setup
 
 Create a `.env` file with your API keys:
@@ -161,15 +181,20 @@ if __name__ == "__main__":
 
 #### 2. Using the CLI API Server
 
-After installation, you can run the API server directly:
+After installation, you can run the API server directly using the `serve-rtp` command:
 
 ```bash
 # Start the API server
-rtp-llm-api --host 0.0.0.0 --port 8000
+serve-rtp --host 0.0.0.0 --port 8000
 
 # Or with custom settings
-rtp-llm-api --host localhost --port 9000 --log-level debug
+serve-rtp --host localhost --port 9000
+
+# Show help for all available options
+serve-rtp --help
 ```
+
+The `serve-rtp` command starts a FastAPI server that provides REST endpoints to control RTP servers.
 
 Then make HTTP requests to control RTP servers:
 

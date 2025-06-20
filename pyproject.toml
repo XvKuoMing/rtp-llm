@@ -64,17 +64,11 @@ serve-rtp = "entrypoints.singleton_api:main"
 
 # setuptools configuration
 [tool.setuptools]
-packages = [
-    "rtp_llm",
-    "rtp_llm.buffer", 
-    "rtp_llm.flow",
-    "rtp_llm.history",
-    "rtp_llm.providers", 
-    "rtp_llm.utils",
-    "rtp_llm.vad",
-    "entrypoints"
-]
 package-dir = {"rtp_llm" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+namespaces = false
 
 [tool.setuptools.package-data]
 rtp_llm = ["*.md"]
