@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # Load environment variables
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(".env.test")
 
 async def create_rtp_server(host_ip: str, host_port: int, peer_ip: str, peer_port: int, name: str, voice: str = "nova"):
     """Create and configure an RTP server instance"""

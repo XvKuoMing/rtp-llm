@@ -9,7 +9,7 @@ from src.providers import OpenAIProvider, AstLLmProvider, TextOpenAIMessage, Mes
 from dotenv import load_dotenv
 import logging
 
-load_dotenv()
+load_dotenv(".env.test")
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
