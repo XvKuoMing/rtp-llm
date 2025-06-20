@@ -3,21 +3,19 @@ import asyncio
 import fastapi
 from fastapi import HTTPException, status
 from pydantic import BaseModel
-from src.rtp_server import RTPServer
+from rtp_llm.rtp_server import RTPServer
 import logging
 import traceback
 import argparse
 from datetime import datetime
 
-from src.buffer import ArrayBuffer
-from src.flow import CopyFlowManager
-from src.history import ChatHistoryLimiter
-from src.vad import WebRTCVAD
-from src.providers import OpenAIProvider, GeminiSTTProvider
-from src.agents import VoiceAgent
-from src.audio_logger import AudioLogger
-from dotenv import load_dotenv
-load_dotenv()
+from rtp_llm.buffer import ArrayBuffer
+from rtp_llm.flow import CopyFlowManager
+from rtp_llm.history import ChatHistoryLimiter
+from rtp_llm.vad import WebRTCVAD
+from rtp_llm.providers import OpenAIProvider, GeminiSTTProvider
+from rtp_llm.agents import VoiceAgent
+from rtp_llm.audio_logger import AudioLogger
 
 # Configure logging
 logging.basicConfig(
@@ -35,26 +33,31 @@ TTS_RESPONSE_FORMAT = "pcm"
 TTS_CODEC = "pcm16"
 
 # Initialize voice agent
-try:
-    voice_agent = VoiceAgent(
-        stt_provider=GeminiSTTProvider(
-            api_key=os.getenv("GEMINI_API_KEY"), 
-            base_url=os.getenv("GEMINI_BASE_URL"),
-            model=os.getenv("GEMINI_MODEL"),
-            system_prompt=SYSTEM
-        ),
-        tts_provider=OpenAIProvider(
-            api_key=os.getenv("OPENAI_TTS_API_KEY"), 
-            base_url=os.getenv("OPENAI_TTS_BASE_URL"),
-            tts_model=os.getenv("OPENAI_TTS_MODEL"),
-        ),
-        history_manager=ChatHistoryLimiter(limit=7),
-        tts_gen_config={"voice": VOICE}
-    )
-    logger.info("Voice agent initialized successfully")
-except Exception as e:
-    logger.error(f"Failed to initialize voice agent: {e}")
-    raise
+def create_voice_agent():
+    from dotenv import load_dotenv
+    load_dotenv()
+    
+    try:
+        voice_agent = VoiceAgent(
+            stt_provider=GeminiSTTProvider(
+                api_key=os.getenv("GEMINI_API_KEY"), 
+                base_url=os.getenv("GEMINI_BASE_URL"),
+                model=os.getenv("GEMINI_MODEL"),
+                system_prompt=SYSTEM
+            ),
+            tts_provider=OpenAIProvider(
+                api_key=os.getenv("OPENAI_TTS_API_KEY"), 
+                base_url=os.getenv("OPENAI_TTS_BASE_URL"),
+                tts_model=os.getenv("OPENAI_TTS_MODEL"),
+            ),
+            history_manager=ChatHistoryLimiter(limit=7),
+            tts_gen_config={"voice": VOICE}
+        )
+        logger.info("Voice agent initialized successfully")
+        return voice_agent
+    except Exception as e:
+        logger.error(f"Failed to initialize voice agent: {e}")
+        raise
 
 class SingletonServer(RTPServer):
     _instance = None
@@ -67,7 +70,7 @@ class SingletonServer(RTPServer):
     def __new__(cls, channel_id: str | int, **kwargs):
         if cls._instance is None:
             logger.info(f"Creating new SingletonServer instance for channel_id: {channel_id}")
-            cls._instance = super().__new__(cls, channel_id, **kwargs)
+            cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self, channel_id: str | int, **kwargs):
@@ -77,27 +80,13 @@ class SingletonServer(RTPServer):
         try:
             super().__init__(
                 buffer=ArrayBuffer(),
-                voice_agent=VoiceAgent(
-                    stt_provider=GeminiSTTProvider(
-                        api_key=os.getenv("GEMINI_API_KEY"), 
-                        base_url=os.getenv("GEMINI_BASE_URL"),
-                        model=os.getenv("GEMINI_MODEL"),
-                        system_prompt=SYSTEM
-                        ),
-                        tts_provider=OpenAIProvider(
-                            api_key=os.getenv("OPENAI_TTS_API_KEY"), 
-                            base_url=os.getenv("OPENAI_TTS_BASE_URL"),
-                            tts_model=os.getenv("OPENAI_TTS_MODEL"),
-                        ),
-                        history_manager=ChatHistoryLimiter(limit=7),
-                        tts_gen_config={"voice": VOICE}
-                    ),
-                    vad=WebRTCVAD(sample_rate=8000, aggressiveness=3, min_speech_duration_ms=500),
-                    flow=CopyFlowManager(),
-                    audio_logger=AudioLogger(uid=channel_id),
-                    tts_response_format=TTS_RESPONSE_FORMAT,
-                    tts_codec=TTS_CODEC,
-                    **kwargs
+                agent=create_voice_agent(),
+                vad=WebRTCVAD(sample_rate=8000, aggressiveness=3, min_speech_duration_ms=500),
+                flow=CopyFlowManager(),
+                audio_logger=AudioLogger(uid=channel_id),
+                tts_response_format=TTS_RESPONSE_FORMAT,
+                tts_codec=TTS_CODEC,
+                **kwargs
             )
             self.task = None
             self.channel_id = channel_id
@@ -198,37 +187,32 @@ async def start_rtp_server(request: StartRTPRequest):
                 status_code=status.HTTP_409_CONFLICT,
                 detail="RTP server is already running for this process"
             )
-        
+
         # Start the server
-        success = server.start(
-            host_ip=request.host_ip,
-            host_port=request.host_port,
-            peer_ip=request.peer_ip,
-            peer_port=request.peer_port,
-        )
+        success = server.start(**request.model_dump())
         
         if not success:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to start RTP server"
             )
-        
+
         return APIResponse(
-            message="RTP server started successfully",
+            message=f"RTP server started successfully for channel {request.channel_id}",
             status="success",
             timestamp=datetime.now(),
             data={
                 "channel_id": request.channel_id,
-                "host_endpoint": f"{request.host_ip}:{request.host_port}",
-                "peer_endpoint": f"{request.peer_ip}:{request.peer_port}",
-                "is_running": server.is_running
+                "host": f"{request.host_ip}:{request.host_port}",
+                "peer": f"{request.peer_ip}:{request.peer_port}"
             }
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Unexpected error starting server: {e}\n{traceback.format_exc()}")
+        logger.error(f"Unexpected error starting RTP server: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}"
@@ -236,19 +220,23 @@ async def start_rtp_server(request: StartRTPRequest):
 
 @app.post("/stop", response_model=APIResponse)
 async def stop_rtp_server():
-    """Stop the RTP server"""
+    """Stop the running RTP server"""
     try:
         server = SingletonServer.get_instance()
         
         if server is None:
-            logger.warning("Attempted to stop server when no instance exists")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="No RTP server instance found"
             )
         
+        if not server.is_running:
+            logger.warning("Attempted to stop server that was not running")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="RTP server is not currently running"
+            )
 
-        
         success = server.stop()
         
         if not success:
@@ -256,18 +244,19 @@ async def stop_rtp_server():
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to stop RTP server"
             )
-        
+
         return APIResponse(
             message="RTP server stopped successfully",
-            status="success", 
+            status="success",
             timestamp=datetime.now(),
-            data={"is_running": False}
+            data={"channel_id": server.channel_id}
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Unexpected error stopping server: {e}\n{traceback.format_exc()}")
+        logger.error(f"Unexpected error stopping RTP server: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}"
@@ -277,10 +266,9 @@ async def stop_rtp_server():
 async def health_check():
     """Health check endpoint"""
     return APIResponse(
-        message="Service is healthy",
-        status="success",
-        timestamp=datetime.now(),
-        data={"service": "rtp-server-api", "version": "1.0.0"}
+        message="RTP Server API is running",
+        status="healthy",
+        timestamp=datetime.now()
     )
 
 @app.get("/status", response_model=APIResponse)
@@ -290,39 +278,42 @@ async def get_server_status():
         server = SingletonServer.get_instance()
         
         if server is None:
-            return APIResponse(
-                message="No server instance found",
-                status="success",
-                timestamp=datetime.now(),
-                data={
-                    "instance_exists": False,
-                    "is_running": False,
-                    "channel_id": None
-                }
-            )
-        
+            status_info = {
+                "server_exists": False,
+                "is_running": False,
+                "channel_id": None
+            }
+        else:
+            status_info = {
+                "server_exists": True,
+                "is_running": server.is_running,
+                "channel_id": server.channel_id,
+                "host": f"{server.host_ip}:{server.host_port}",
+                "peer": f"{server.peer_ip}:{server.peer_port}" if server.peer_ip and server.peer_port else None
+            }
+
         return APIResponse(
             message="Server status retrieved successfully",
             status="success",
             timestamp=datetime.now(),
-            data={
-                "instance_exists": True,
-                "is_running": server.is_running,
-                "channel_id": getattr(server, 'channel_id', None)
-            }
-        )
-        
-    except Exception as e:
-        logger.error(f"Error getting server status: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get server status: {str(e)}"
+            data=status_info
         )
 
-# Error handlers
+    except Exception as e:
+        logger.error(f"Error retrieving server status: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error: {str(e)}"
+        )
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
-    logger.error(f"Unhandled exception: {exc}\n{traceback.format_exc()}")
+    """Global exception handler for unhandled errors"""
+    logger.error(f"Unhandled exception: {exc}")
+    logger.error(f"Request: {request.method} {request.url}")
+    logger.error(f"Traceback: {traceback.format_exc()}")
+    
     return fastapi.responses.JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
@@ -333,32 +324,23 @@ async def global_exception_handler(request, exc):
         }
     )
 
-if __name__ == "__main__":
-    import uvicorn
-    
-    # Set up command line argument parsing
-    parser = argparse.ArgumentParser(description="RTP Server API - Stateless voice agent communication service")
-    parser.add_argument(
-        "--port", 
-        type=int, 
-        default=30_000,
-        help="Port to run the API server on (default: %(default)s)"
-    )
-    parser.add_argument(
-        "--host",
-        type=str,
-        default="0.0.0.0",
-        help="Host to bind the API server to (default: %(default)s)"
-    )
+def main():
+    """Main entry point for the CLI"""
+    parser = argparse.ArgumentParser(description='RTP-LLM API Server')
+    parser.add_argument('--host', default='0.0.0.0', help='Host to bind to')
+    parser.add_argument('--port', type=int, default=8000, help='Port to bind to')
+    parser.add_argument('--log-level', default='info', help='Log level')
     
     args = parser.parse_args()
     
-    logger.info(f"Starting RTP Server API on {args.host}:{args.port}...")
+    import uvicorn
     uvicorn.run(
-        app, 
-        host=args.host, 
+        "entrypoints.singleton_api:app",
+        host=args.host,
         port=args.port,
-        log_level="info"
+        log_level=args.log_level,
+        reload=False
     )
 
-
+if __name__ == "__main__":
+    main() 

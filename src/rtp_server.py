@@ -1,8 +1,3 @@
-import sys
-import os
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import asyncio
 import socket
 import time
@@ -23,13 +18,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-from src.utils.rtp_processing import RTPPacket, AudioCodec
-from src.utils.audio_processing import resample_pcm16, pcm2wav
-from src.buffer.array_buffer import BaseAudioBuffer
-from src.vad import BaseVAD
-from src.flow import BaseChatFlowManager
-from src.agents import VoiceAgent
-from src.audio_logger import AudioLogger
+from .utils.rtp_processing import RTPPacket, AudioCodec
+from .utils.audio_processing import resample_pcm16, pcm2wav
+from .buffer.array_buffer import BaseAudioBuffer
+from .vad import BaseVAD
+from .flow import BaseChatFlowManager
+from .agents import VoiceAgent
+from .audio_logger import AudioLogger
 
 DEFAULT_SAMPLE_RATE = 8000
 DEFAULT_MIN_PACK_DURATION = 1 # seconds

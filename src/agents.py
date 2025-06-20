@@ -1,10 +1,5 @@
-import sys
-import os
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from src.providers import Message, BaseSTTProvider, BaseTTSProvider
-from src.history import BaseChatHistory
+from .providers import Message, BaseSTTProvider, BaseTTSProvider
+from .history import BaseChatHistory
 from typing import List, AsyncGenerator, Optional, Any, Awaitable, Dict
 import logging
 

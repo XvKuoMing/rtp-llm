@@ -1,9 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "rtp-llm"
 version = "0.1.0"
 description = "simple building blocks for creating real-time agents"
 readme = "README.md"
 requires-python = ">=3.11"
+authors = [
+    {name = "XvKuoMing", email = "kamasalyamov@gmail.com"}
+]
+license = {text = "MIT"}
+keywords = ["rtp", "voice", "ai", "real-time", "agent"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
 dependencies = [
     "fastapi==0.115.12",
     "google-genai==1.14.0",
@@ -21,6 +39,7 @@ dependencies = [
     "audioop-lts; python_version>='3.13'",
     "librosa>=0.11.0",
     "resampy>=0.4.3",
+    "python-dotenv>=1.0.0",
 ]
 
 # Optional dependencies (extras)
@@ -32,4 +51,22 @@ tests = [
     "httpx>=0.28.1",
     "python-dotenv==1.1.0"
 ]
+
+# CLI entry points
+[project.scripts]
+serve-rtp = "entrypoints.singleton_api:main"
+
+# Package URLs
+[project.urls]
+"Homepage" = "https://github.com/XvKuoMing/rtp-llm"
+"Bug Reports" = "https://github.com/XvKuoMing/rtp-llm/issues"
+"Source" = "https://github.com/XvKuoMing/rtp-llm.git"
+
+# setuptools configuration
+[tool.setuptools]
+packages = ["rtp_llm", "entrypoints"]
+package-dir = {"rtp_llm" = "src"}
+
+[tool.setuptools.package-data]
+rtp_llm = ["*.md"]
 
