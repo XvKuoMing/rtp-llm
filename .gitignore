@@ -1,0 +1,7 @@
+*venv/
+__pycache__/
+.env
+.vscode/
+.git/
+.pytest_cache/
+audio_logs/

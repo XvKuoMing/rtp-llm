@@ -1,11 +1,21 @@
-pydantic==2.11.3
 fastapi==0.115.12
-uvicorn==0.34.2
-openai==1.76.0
-numpy>=1.22
-scipy>=1.10
 google-genai==1.14.0
-webrtcvad==2.0.10
-setuptools==80.0.1
-soundfile==0.13.1
 jinja2==3.1.6
+numpy>=1.22
+openai==1.76.0
+pydantic==2.11.3
+scipy>=1.10
+setuptools==80.0.1
+silero-vad>=5.1.2
+soundfile==0.13.1
+uvicorn==0.34.2
+webrtcvad==2.0.10
+# Conditional dependencies using environment markers # audiopp was deprecated in python 3.13
+# audioop-lts; python_version>='3.13'",
+librosa>=0.11.0
+resampy>=0.4.3
+
+pytest>=8.4.0
+pytest-asyncio>=1.0.0
+httpx>=0.28.1
+python-dotenv==1.1.0
