@@ -202,6 +202,14 @@ class SingletonServer(RTPServer):
             raise
     
     @property
+    def host_ip(self):
+        return self.__class__._host_ip
+    
+    @property
+    def host_port(self):
+        return self.__class__._host_port
+
+    @property
     def is_running(self):
         return self.task is not None and not self.task.done()
 
@@ -313,9 +321,9 @@ async def start_rtp_server(request: StartRTPRequest):
             status="success",
             timestamp=datetime.now(),
             data={
-                "channel_id": request.channel_id,
-                "host": f"{request.host_ip}:{request.host_port}",
-                "peer": f"{request.peer_ip}:{request.peer_port}"
+                "channel_id": server.channel_id,
+                "host": f"{server.host_ip}:{server.host_port}",
+                "peer": f"{server.peer_ip}:{server.peer_port}"
             }
         )
 
