@@ -4,6 +4,15 @@ from typing import Optional
 from enum import IntEnum
 import audioop
 
+# Optional Opus support
+try:
+    import opuslib
+    OPUS_AVAILABLE = True
+except Exception as e:
+    print(f"Opus library not found: {e}")
+    OPUS_AVAILABLE = False
+    opuslib = None
+
 
 class AudioCodec(IntEnum):
     """Common audio codec payload types (RFC 3551)"""
@@ -24,6 +33,7 @@ class AudioCodec(IntEnum):
     DVI4_11025 = 16 # DVI4 11.025kHz
     DVI4_22050 = 17 # DVI4 22.05kHz
     G729 = 18     # G.729
+    OPUS = 111    # Opus (RFC 7587) - dynamic payload type
 
 
 @dataclass(frozen=True)
@@ -110,13 +120,15 @@ class RTPPacket:
         """
         if isinstance(codec, AudioCodec):
             return codec
-        assert codec in ["pcm16", "ulaw", "alaw"], "Unsupported codec"
+        assert codec in ["pcm16", "ulaw", "alaw", "opus"], "Unsupported codec"
         if codec == "pcm16":
             return AudioCodec.L16_1CH
         elif codec == "ulaw":
             return AudioCodec.PCMU
         elif codec == "alaw":
             return AudioCodec.PCMA
+        elif codec == "opus":
+            return AudioCodec.OPUS
         else:
             raise ValueError(f"Unsupported codec: {codec}")
     
@@ -184,9 +196,34 @@ class RTPPacket:
         return cls.alaw_rtp(alaw_data, sequence_number, timestamp, ssrc, marker)
     
     @classmethod
+    def opus_rtp(cls, opus_data: bytes, sequence_number: int = 0, timestamp: int = 0, ssrc: int = 0, marker: bool = False) -> 'RTPPacket':
+        """
+        Create RTP packet from Opus audio data
+        """
+        return cls.simple_rtp(opus_data, AudioCodec.OPUS, sequence_number, timestamp, ssrc, marker)
+    
+    @classmethod
+    def enforce_opus_from_pcm16(cls, pcm16_data: bytes, sample_rate: int = 48000, channels: int = 1, 
+                               sequence_number: int = 0, timestamp: int = 0, ssrc: int = 0, marker: bool = False) -> 'RTPPacket':
+        """
+        Convert PCM16 to Opus and create RTP packet
+        """
+        if not OPUS_AVAILABLE:
+            raise RuntimeError("Opus codec is not available. Install the Opus library to use Opus encoding.")
+        
+        # Create Opus encoder
+        encoder = opuslib.Encoder(sample_rate, channels, opuslib.APPLICATION_VOIP)
+        
+        # Encode PCM16 to Opus
+        opus_data = encoder.encode(pcm16_data, frame_size=sample_rate // 50)  # 20ms frame
+        
+        return cls.opus_rtp(opus_data, sequence_number, timestamp, ssrc, marker)
+    
+    @classmethod
     def enforce_rtp(cls, data: bytes, 
                     format: str | AudioCodec, target: str | AudioCodec, 
-                    sequence_number: int = 0, timestamp: int = 0, ssrc: int = 0, marker: bool = False) -> 'RTPPacket':
+                    sequence_number: int = 0, timestamp: int = 0, ssrc: int = 0, marker: bool = False,
+                    sample_rate: int = 48000, channels: int = 1) -> 'RTPPacket':
         format_codec = cls.detect_codec(format)
         target_codec = cls.detect_codec(target)
         
@@ -198,6 +235,8 @@ class RTPPacket:
                 return cls.enforce_ulaw_from_pcm16(data, sequence_number, timestamp, ssrc, marker)
             elif format_codec in [AudioCodec.L16_1CH, AudioCodec.L16_2CH] and target_codec == AudioCodec.PCMA:
                 return cls.enforce_alaw_from_pcm16(data, sequence_number, timestamp, ssrc, marker)
+            elif format_codec in [AudioCodec.L16_1CH, AudioCodec.L16_2CH] and target_codec == AudioCodec.OPUS:
+                return cls.enforce_opus_from_pcm16(data, sample_rate, channels, sequence_number, timestamp, ssrc, marker)
             else:
                 raise ValueError(f"Unsupported format or target: {format}, {target}")
 
@@ -258,7 +297,16 @@ class RTPPacket:
         """
         return self.header.payload_type == AudioCodec.CN.value
     
-    def enforce_pcm16(self) -> bytes:
+    @property
+    def is_opus(self) -> bool:
+        """
+        Check if this packet contains Opus audio data
+        """
+        if not self.is_audio or self.audio_codec != AudioCodec.OPUS:
+            return False
+        return True
+    
+    def enforce_pcm16(self, sample_rate: int = 48000, channels: int = 1) -> bytes:
         """
         Convert RTP packet to 16-bit linear PCM audio data
         """
@@ -268,201 +316,15 @@ class RTPPacket:
             return audioop.alaw2lin(self.payload, 2) # 2 = 16-bit samples
         elif self.is_linear_pcm:
             return self.payload
+        elif self.is_opus:
+            if not OPUS_AVAILABLE:
+                raise RuntimeError("Opus codec is not available. Install the Opus library to use Opus decoding.")
+            
+            # Create Opus decoder
+            decoder = opuslib.Decoder(sample_rate, channels)
+            
+            # Decode Opus to PCM16
+            pcm16_data = decoder.decode(self.payload, frame_size=sample_rate // 50)  # 20ms frame
+            return pcm16_data
         else:
             raise ValueError("Unsupported audio codec or data format")
-        
-        
-        
-
-
-
-
-
-
-# class AudioProcessor:
-#     """Audio codec processing utilities"""
-    
-#     @staticmethod
-#     def decode_ulaw(data: bytes) -> bytes:
-#         """
-#         Decode μ-law (G.711) audio data to linear PCM
-#         Returns 16-bit linear PCM data
-#         """
-#         try:
-#             return audioop.ulaw2lin(data, 2)  # 2 = 16-bit samples
-#         except audioop.error as e:
-#             raise ValueError(f"Failed to decode μ-law audio: {e}")
-    
-#     @staticmethod
-#     def encode_ulaw(linear_data: bytes) -> bytes:
-#         """
-#         Encode linear PCM data to μ-law (G.711)
-#         Expects 16-bit linear PCM input
-#         """
-#         try:
-#             return audioop.lin2ulaw(linear_data, 2)  # 2 = 16-bit samples
-#         except audioop.error as e:
-#             raise ValueError(f"Failed to encode μ-law audio: {e}")
-    
-#     @staticmethod
-#     def decode_alaw(data: bytes) -> bytes:
-#         """
-#         Decode A-law (G.711) audio data to linear PCM
-#         Returns 16-bit linear PCM data
-#         """
-#         try:
-#             return audioop.alaw2lin(data, 2)  # 2 = 16-bit samples
-#         except audioop.error as e:
-#             raise ValueError(f"Failed to decode A-law audio: {e}")
-    
-#     @staticmethod
-#     def encode_alaw(linear_data: bytes) -> bytes:
-#         """
-#         Encode linear PCM data to A-law (G.711)
-#         Expects 16-bit linear PCM input
-#         """
-#         try:
-#             return audioop.lin2alaw(linear_data, 2)  # 2 = 16-bit samples
-#         except audioop.error as e:
-#             raise ValueError(f"Failed to encode A-law audio: {e}")
-
-
-# def parse_rtp(data: bytes) -> RTPPacket:
-#     """
-#     Parse RTP packet from bytes
-#     """
-#     if len(data) < 12:
-#         raise ValueError("RTP packet must be at least 12 bytes")
-    
-#     header_size = 12  # Basic header size
-#     header = RTPHeader.from_bytes(data[:header_size])
-    
-#     # Account for CSRC list if present
-#     if header.csrc_count > 0:
-#         header_size += header.csrc_count * 4
-#         if len(data) < header_size:
-#             raise ValueError(f"RTP packet too short for {header.csrc_count} CSRC identifiers")
-    
-#     payload = data[header_size:]
-#     return RTPPacket(header=header, payload=payload)
-
-
-# def build_rtp(header: RTPHeader, payload: bytes) -> bytes:
-#     """
-#     Build RTP packet from header and payload
-#     """
-#     return header.as_bytes + payload
-
-
-# def create_audio_rtp_packet(
-#     payload: bytes,
-#     codec: AudioCodec,
-#     sequence_number: int,
-#     timestamp: int,
-#     ssrc: int,
-#     marker: bool = False
-# ) -> RTPPacket:
-#     """
-#     Create an RTP packet for audio data
-    
-#     Args:
-#         payload: Audio payload data
-#         codec: Audio codec type
-#         sequence_number: RTP sequence number
-#         timestamp: RTP timestamp (usually audio sample count)
-#         ssrc: Synchronization source identifier
-#         marker: Marker bit (typically set for start of talk spurt)
-#     """
-#     header = RTPHeader(
-#         version=2,  # RTP version 2
-#         padding=False,
-#         extension=False,
-#         csrc_count=0,
-#         marker=marker,
-#         payload_type=codec.value,
-#         sequence_number=sequence_number,
-#         timestamp=timestamp,
-#         ssrc=ssrc
-#     )
-    
-#     return RTPPacket(header=header, payload=payload)
-
-
-# def process_audio_packet(packet: RTPPacket) -> Optional[bytes]:
-#     """
-#     Process audio RTP packet and return decoded linear PCM data
-    
-#     Args:
-#         packet: RTP packet containing audio data
-        
-#     Returns:
-#         Linear PCM audio data (16-bit) or None if not audio or unsupported codec
-#     """
-#     if not packet.is_audio:
-#         return None
-    
-#     codec = packet.audio_codec
-#     processor = AudioProcessor()
-    
-#     try:
-#         if codec == AudioCodec.PCMU:
-#             return processor.decode_ulaw(packet.payload)
-#         elif codec == AudioCodec.PCMA:
-#             return processor.decode_alaw(packet.payload)
-#         elif codec in [AudioCodec.L16_1CH, AudioCodec.L16_2CH]:
-#             # Already linear PCM, return as-is
-#             return packet.payload
-#         else:
-#             # Unsupported codec
-#             return None
-#     except ValueError:
-#         return None
-
-
-# # Example usage and utility functions
-# def create_ulaw_rtp_stream(
-#     audio_samples: bytes,
-#     sample_rate: int = 8000,
-#     samples_per_packet: int = 160,
-#     ssrc: int = 12345,
-#     initial_seq: int = 1000,
-#     initial_timestamp: int = 0
-# ) -> list[RTPPacket]:
-#     """
-#     Create a stream of RTP packets from linear PCM audio data using μ-law encoding
-    
-#     Args:
-#         audio_samples: Linear PCM audio data (16-bit)
-#         sample_rate: Audio sample rate (default 8kHz for μ-law)
-#         samples_per_packet: Number of audio samples per RTP packet (default 160 = 20ms @ 8kHz)
-#         ssrc: Synchronization source identifier
-#         initial_seq: Starting sequence number
-#         initial_timestamp: Starting timestamp
-    
-#     Returns:
-#         List of RTP packets containing μ-law encoded audio
-#     """
-#     packets = []
-#     processor = AudioProcessor()
-    
-#     # Convert to μ-law
-#     ulaw_data = processor.encode_ulaw(audio_samples)
-    
-#     # Split into packets
-#     bytes_per_packet = samples_per_packet  # 1 byte per μ-law sample
-    
-#     for i in range(0, len(ulaw_data), bytes_per_packet):
-#         chunk = ulaw_data[i:i + bytes_per_packet]
-        
-#         packet = create_audio_rtp_packet(
-#             payload=chunk,
-#             codec=AudioCodec.PCMU,
-#             sequence_number=(initial_seq + len(packets)) & 0xFFFF,  # 16-bit wraparound
-#             timestamp=(initial_timestamp + i) & 0xFFFFFFFF,  # 32-bit wraparound
-#             ssrc=ssrc,
-#             marker=(i == 0)  # Set marker on first packet
-#         )
-        
-#         packets.append(packet)
-    
-#     return packets

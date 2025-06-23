@@ -13,9 +13,10 @@ from rtp_llm.buffer import ArrayBuffer
 from rtp_llm.flow import CopyFlowManager
 from rtp_llm.history import ChatHistoryLimiter
 from rtp_llm.vad import WebRTCVAD
-from rtp_llm.providers import OpenAIProvider, GeminiSTTProvider
+from rtp_llm.providers import OpenAIProvider, AstLLmProvider, GeminiSTTProvider
 from rtp_llm.agents import VoiceAgent
 from rtp_llm.audio_logger import AudioLogger
+from dotenv import load_dotenv
 
 # Configure logging
 logging.basicConfig(
@@ -25,33 +26,127 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-VOICE = "shimmer"
+logger.info(f"Seeking .env in current directory: {os.getcwd()}")
+load_dotenv()
+
 SYSTEM = """
-Ты - ассистент компании "Водовоз".
+You are a helpful assistant.
 """
-TTS_RESPONSE_FORMAT = "pcm"
-TTS_CODEC = "pcm16"
+providers = {
+    "gemini": {
+        "stt": {
+            "api_key": os.getenv("GEMINI_STT_API_KEY"),
+            "base_url": os.getenv("GEMINI_STT_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"),
+            "model": os.getenv("GEMINI_STT_MODEL", "gemini-2.0-flash"),
+            "system_prompt": SYSTEM
+        },
+    },
+    "openai": {
+        "stt": {
+            "overwrite_stt_model_api_key": os.getenv("OPENAI_STT_API_KEY"),
+            "overwrite_stt_model_base_url": os.getenv("OPENAI_STT_BASE_URL", "https://api.openai.com/v1"),
+            "stt_model": os.getenv("OPENAI_STT_MODEL", "gpt-4o-mini-audio-preview"),
+            "system_prompt": SYSTEM
+        },
+        "tts": {
+            "overwrite_tts_model_api_key": os.getenv("OPENAI_TTS_API_KEY"),
+            "overwrite_tts_model_base_url": os.getenv("OPENAI_TTS_BASE_URL", "https://api.openai.com/v1"),
+            "tts_model": os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
+        }
+    },
+    "ast_llm": {
+        "stt": {
+            "ast_model": os.getenv("AST_MODEL", "openai/whisper-large-v3-turbo"),
+            "overwrite_ast_model_api_key": os.getenv("AST_API_KEY"),
+            "overwrite_ast_model_base_url": os.getenv("AST_BASE_URL", "https://api.openai.com/v1"),
+            "language": os.getenv("AST_LANGUAGE", "en"),
+            "stt_model": os.getenv("LLM_MODEL", "gpt-4o-mini-audio-preview"),
+            "overwrite_stt_api_key": os.getenv("LLM_API_KEY"),
+            "overwrite_stt_base_url": os.getenv("LLM_BASE_URL", "https://api.openai.com/v1"),
+            "system_prompt": SYSTEM
+        },
+    }
+}
+
+# Global provider variables
+stt_provider = None
+tts_provider = None
+stt_backup_provider = []
+tts_backup_provider = []
+
+def initialize_providers():
+    """Initialize STT and TTS providers based on configuration and availability"""
+    global stt_provider, tts_provider, stt_backup_provider, tts_backup_provider
+    
+    # Update providers dict with current SYSTEM prompt
+    providers["gemini"]["stt"]["system_prompt"] = SYSTEM
+    providers["openai"]["stt"]["system_prompt"] = SYSTEM
+    providers["ast_llm"]["stt"]["system_prompt"] = SYSTEM
+    
+    providers_order = os.getenv("PROVIDERS_ORDER", "gemini,openai,ast_llm")
+    providers_order = [provider.strip() for provider in providers_order.split(",")]
+    
+    # Reset provider variables
+    stt_provider = None
+    tts_provider = None
+    stt_backup_provider = []
+    tts_backup_provider = []
+    
+    for provider in providers_order:
+        if provider == "gemini" and all(providers["gemini"]["stt"].values()):
+            provider_instance = GeminiSTTProvider(**providers["gemini"]["stt"])
+            if stt_provider is None:
+                stt_provider = provider_instance
+            else:
+                stt_backup_provider.append(provider_instance)
+        if provider == "openai" and all(providers["openai"]["stt"].values()):
+            provider_instance = OpenAIProvider(**providers["openai"]["stt"])
+            if stt_provider is None:
+                stt_provider = provider_instance
+            else:
+                stt_backup_provider.append(provider_instance)
+        if provider == "openai" and all(providers["openai"]["tts"].values()):
+            provider_instance = OpenAIProvider(**providers["openai"]["tts"])
+            if tts_provider is None:
+                tts_provider = provider_instance
+            else:
+                tts_backup_provider.append(provider_instance)
+        if provider == "ast_llm" and all(providers["ast_llm"]["stt"].values()):
+            provider_instance = AstLLmProvider(**providers["ast_llm"]["stt"])
+            if stt_provider is None:
+                stt_provider = provider_instance
+            else:
+                stt_backup_provider.append(provider_instance)
+    
+    if stt_provider is None:
+        raise ValueError("No STT provider found")
+    logger.info(f"STT provider initialized: {type(stt_provider).__name__}")
+    if tts_provider is None:
+        raise ValueError("No TTS provider found")
+    logger.info(f"TTS provider initialized: {type(tts_provider).__name__}")
+    if stt_backup_provider:
+        logger.info(f"STT backup providers initialized: {[type(provider).__name__ for provider in stt_backup_provider]}")
+    else:
+        logger.warning("No STT backup provider found")
+    if tts_backup_provider:
+        logger.info(f"TTS backup providers initialized: {[type(provider).__name__ for provider in tts_backup_provider]}")
+    else:
+        logger.warning("No TTS backup provider found")
 
 # Initialize voice agent
 def create_voice_agent():
-    from dotenv import load_dotenv
-    load_dotenv()
+    # Ensure providers are initialized if not already done
+    if stt_provider is None or tts_provider is None:
+        logger.info("Providers not initialized, initializing now...")
+        initialize_providers()
     
     try:
         voice_agent = VoiceAgent(
-            stt_provider=GeminiSTTProvider(
-                api_key=os.getenv("GEMINI_API_KEY"), 
-                base_url=os.getenv("GEMINI_BASE_URL"),
-                model=os.getenv("GEMINI_MODEL"),
-                system_prompt=SYSTEM
-            ),
-            tts_provider=OpenAIProvider(
-                api_key=os.getenv("OPENAI_TTS_API_KEY"), 
-                base_url=os.getenv("OPENAI_TTS_BASE_URL"),
-                tts_model=os.getenv("OPENAI_TTS_MODEL"),
-            ),
-            history_manager=ChatHistoryLimiter(limit=7),
-            tts_gen_config={"voice": VOICE}
+            stt_provider=stt_provider,
+            tts_provider=tts_provider,
+            history_manager=ChatHistoryLimiter(),
+            stt_backup_provider=stt_backup_provider,
+            tts_backup_provider=tts_backup_provider
         )
         logger.info("Voice agent initialized successfully")
         return voice_agent
@@ -70,7 +165,7 @@ class SingletonServer(RTPServer):
     def __new__(cls, channel_id: str | int, **kwargs):
         if cls._instance is None:
             logger.info(f"Creating new SingletonServer instance for channel_id: {channel_id}")
-            cls._instance = super().__new__(cls)
+            cls._instance = super().__new__(cls, **kwargs)
         return cls._instance
 
     def __init__(self, channel_id: str | int, **kwargs):
@@ -84,8 +179,6 @@ class SingletonServer(RTPServer):
                 vad=WebRTCVAD(sample_rate=8000, aggressiveness=3, min_speech_duration_ms=500),
                 flow=CopyFlowManager(),
                 audio_logger=AudioLogger(uid=channel_id),
-                tts_response_format=TTS_RESPONSE_FORMAT,
-                tts_codec=TTS_CODEC,
                 **kwargs
             )
             self.task = None
@@ -149,6 +242,8 @@ class StartRTPRequest(BaseModel):
     host_port: int
     peer_ip: str
     peer_port: int
+    tts_response_format: str
+    tts_codec: str
     target_codec: str
     tts_sample_rate: int
     target_sample_rate: int
@@ -228,13 +323,6 @@ async def stop_rtp_server():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="No RTP server instance found"
-            )
-        
-        if not server.is_running:
-            logger.warning("Attempted to stop server that was not running")
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="RTP server is not currently running"
             )
 
         success = server.stop()
@@ -324,21 +412,32 @@ async def global_exception_handler(request, exc):
         }
     )
 
+
+def load_system_prompt(path_or_prompt: str):
+    global SYSTEM
+    if os.path.exists(path_or_prompt):
+        with open(path_or_prompt, 'r') as file:
+            SYSTEM = file.read()
+    else:
+        SYSTEM = path_or_prompt
+    logger.info(f"System prompt loaded from {path_or_prompt}")
+
 def main():
     """Main entry point for the CLI"""
     parser = argparse.ArgumentParser(description='RTP-LLM API Server')
     parser.add_argument('--host', default='0.0.0.0', help='Host to bind to')
     parser.add_argument('--port', type=int, default=8000, help='Port to bind to')
-    parser.add_argument('--log-level', default='info', help='Log level')
+    parser.add_argument('--system', default=SYSTEM, help='Plain system prompt or .txt file path')
     
     args = parser.parse_args()
+    load_system_prompt(args.system)
+    initialize_providers()
     
     import uvicorn
     uvicorn.run(
         app,
         host=args.host,
         port=args.port,
-        log_level=args.log_level,
         reload=False
     )
 

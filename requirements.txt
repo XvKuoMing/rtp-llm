@@ -13,6 +13,7 @@ webrtcvad==2.0.10
 # Conditional dependencies using environment markers # audiopp was deprecated in python 3.13
 # audioop-lts; python_version>='3.13'",
 librosa>=0.11.0
+opuslib>=3.0.0
 resampy>=0.4.3
 
 pytest>=8.4.0

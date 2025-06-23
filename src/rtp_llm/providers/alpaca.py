@@ -181,7 +181,7 @@ class AstLLmProvider(OpenAIProvider):
                 self.ast_client = None
             else:
                 self.ast_client = AsyncOpenAI(api_key=self.ast_api_key, base_url=self.ast_base_url)
-        self.ast_language = language
+        self.ast_language = language if language else "en"
 
 
     async def format(self, message: Message) -> Any:
