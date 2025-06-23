@@ -145,8 +145,8 @@ def create_voice_agent():
             stt_provider=stt_provider,
             tts_provider=tts_provider,
             history_manager=ChatHistoryLimiter(),
-            stt_backup_provider=stt_backup_provider,
-            tts_backup_provider=tts_backup_provider
+            backup_stt_providers=stt_backup_provider,
+            backup_tts_providers=tts_backup_provider
         )
         logger.info("Voice agent initialized successfully")
         return voice_agent
@@ -178,7 +178,9 @@ class SingletonServer(RTPServer):
     def __init__(self, channel_id: str | int, **kwargs):
         if hasattr(self, '_initialized'):
             return
-        
+        self.task = None
+        self.channel_id = None
+        self._initialized = False
         try:
             super().__init__(
                 buffer=ArrayBuffer(),
