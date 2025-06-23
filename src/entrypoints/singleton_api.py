@@ -250,13 +250,13 @@ class APIResponse(BaseModel):
 
 class StartRTPRequest(BaseModel):
     channel_id: str | int
-    peer_ip: str
-    peer_port: int
-    tts_response_format: str
-    tts_codec: str
-    target_codec: str
-    tts_sample_rate: int
-    target_sample_rate: int
+    peer_ip: Optional[str] = None
+    peer_port: Optional[int] = None
+    tts_response_format: Optional[str] = None
+    tts_codec: Optional[str] = None
+    target_codec: Optional[str] = None
+    tts_sample_rate: Optional[int] = None
+    target_sample_rate: Optional[int] = None
     first_message: Optional[str] = None
     allow_interruptions: bool = False
 
@@ -282,13 +282,15 @@ async def start_rtp_server(request: StartRTPRequest):
     try:
         server = SingletonServer.get_instance()
         server_args = request.model_dump()
+        # remove arguments with None values
+        server_args = {k: v for k, v in server_args.items() if v is not None}
         run_arguments = {
-            "first_message": server_args.pop("first_message"),
-            "allow_interruptions": server_args.pop("allow_interruptions"),
+            "first_message": server_args.get("first_message", None),
+            "allow_interruptions": server_args.get("allow_interruptions", False),
         }
         # Create new server if none exists
         if server is None:
-            logger.info(f"Creating new server instance for channel {request.channel_id}")
+            logger.info(f"Creating new server instance for channel {request.channel_id} with args: {server_args}")
             server = SingletonServer(**server_args)
         
         # Check if server is already running
@@ -300,6 +302,7 @@ async def start_rtp_server(request: StartRTPRequest):
             )
 
         # Start the server
+        logger.info(f"Starting server with args: {run_arguments}")
         success = server.start(**run_arguments)
         
         if not success:
