@@ -172,7 +172,7 @@ class SingletonServer(RTPServer):
     def __new__(cls, channel_id: str | int, **kwargs):
         if cls._instance is None:
             logger.info(f"Creating new SingletonServer instance for channel_id: {channel_id}")
-            cls._instance = super().__new__(cls, **kwargs)
+            cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self, channel_id: str | int, **kwargs):
@@ -423,8 +423,11 @@ async def global_exception_handler(request, exc):
 def load_system_prompt(path_or_prompt: str):
     global SYSTEM
     if os.path.exists(path_or_prompt):
-        with open(path_or_prompt, 'r') as file:
-            SYSTEM = file.read()
+        try:
+            with open(path_or_prompt, 'r', encoding="utf-8") as file:
+                SYSTEM = file.read()
+        except UnicodeDecodeError:
+            logger.warning(f"Failed to decode with utf-8 system: {path_or_prompt}")
     else:
         SYSTEM = path_or_prompt
     logger.info(f"System prompt loaded from {path_or_prompt}")
