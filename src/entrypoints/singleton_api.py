@@ -212,7 +212,7 @@ class SingletonServer(RTPServer):
         
         try:
             self.task = asyncio.create_task(self.run(*args, **kwargs))
-            logger.info(f"Started RTP server for channel {self.channel_id} on {kwargs.get('host_ip', 'unknown')}:{kwargs.get('host_port', 'unknown')}")
+            logger.info(f"Started RTP server for channel {self.channel_id} on {self.host_ip}:{self.host_port}")
             return True
         except Exception as e:
             logger.error(f"Failed to start server for channel {self.channel_id}: {e}")
