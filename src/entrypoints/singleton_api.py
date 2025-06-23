@@ -157,10 +157,17 @@ def create_voice_agent():
 class SingletonServer(RTPServer):
     _instance = None
     _task = None
+    _host_ip = None
+    _host_port = None
 
     @staticmethod
     def get_instance():
         return SingletonServer._instance
+    
+    @staticmethod
+    def set_host_ip(host_ip: str, host_port: int):
+        SingletonServer._host_ip = host_ip
+        SingletonServer._host_port = host_port
 
     def __new__(cls, channel_id: str | int, **kwargs):
         if cls._instance is None:
@@ -179,6 +186,8 @@ class SingletonServer(RTPServer):
                 vad=WebRTCVAD(sample_rate=8000, aggressiveness=3, min_speech_duration_ms=500),
                 flow=CopyFlowManager(),
                 audio_logger=AudioLogger(uid=channel_id),
+                host_ip=self.__class__._host_ip,
+                host_port=self.__class__._host_port,
                 **kwargs
             )
             self.task = None
@@ -238,8 +247,6 @@ class APIResponse(BaseModel):
 
 class StartRTPRequest(BaseModel):
     channel_id: str | int
-    host_ip: str
-    host_port: int
     peer_ip: str
     peer_port: int
     tts_response_format: str
@@ -273,7 +280,7 @@ async def start_rtp_server(request: StartRTPRequest):
         # Create new server if none exists
         if server is None:
             logger.info(f"Creating new server instance for channel {request.channel_id}")
-            server = SingletonServer(channel_id=request.channel_id, **request.model_dump())
+            server = SingletonServer(**request.model_dump())
         
         # Check if server is already running
         if server.is_running:
@@ -432,6 +439,7 @@ def main():
     args = parser.parse_args()
     load_system_prompt(args.system)
     initialize_providers()
+    SingletonServer.set_host_ip(args.host, args.port)
     
     import uvicorn
     uvicorn.run(
