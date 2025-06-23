@@ -3,6 +3,7 @@ import asyncio
 import fastapi
 from fastapi import HTTPException, status
 from pydantic import BaseModel
+from typing import Optional
 import logging
 import traceback
 import argparse
@@ -256,6 +257,8 @@ class StartRTPRequest(BaseModel):
     target_codec: str
     tts_sample_rate: int
     target_sample_rate: int
+    first_message: Optional[str] = None
+    allow_interruptions: bool = False
 
 # Middleware for logging
 @app.middleware("http")
@@ -278,11 +281,15 @@ async def start_rtp_server(request: StartRTPRequest):
     """Start the RTP server for voice communication"""
     try:
         server = SingletonServer.get_instance()
-        
+        server_args = request.model_dump()
+        run_arguments = {
+            "first_message": server_args.pop("first_message"),
+            "allow_interruptions": server_args.pop("allow_interruptions"),
+        }
         # Create new server if none exists
         if server is None:
             logger.info(f"Creating new server instance for channel {request.channel_id}")
-            server = SingletonServer(**request.model_dump())
+            server = SingletonServer(**server_args)
         
         # Check if server is already running
         if server.is_running:
@@ -293,7 +300,7 @@ async def start_rtp_server(request: StartRTPRequest):
             )
 
         # Start the server
-        success = server.start(**request.model_dump())
+        success = server.start(**run_arguments)
         
         if not success:
             raise HTTPException(
