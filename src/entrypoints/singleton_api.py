@@ -285,8 +285,8 @@ async def start_rtp_server(request: StartRTPRequest):
         # remove arguments with None values
         server_args = {k: v for k, v in server_args.items() if v is not None}
         run_arguments = {
-            "first_message": server_args.get("first_message", None),
-            "allow_interruptions": server_args.get("allow_interruptions", False),
+            "first_message": server_args.pop("first_message", None),
+            "allow_interruptions": server_args.pop("allow_interruptions", False),
         }
         # Create new server if none exists
         if server is None:
