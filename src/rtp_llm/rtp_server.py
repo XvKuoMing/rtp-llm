@@ -41,7 +41,8 @@ class RTPServer:
                  flow: BaseChatFlowManager,
                  agent: VoiceAgent,
                  host_ip: str, host_port: int, 
-                 peer_ip: Optional[str] = None, peer_port: Optional[int] = None,
+                 peer_ip: Optional[str] = None, 
+                 peer_port: Optional[int] = None,
                  tts_response_format: str = "pcm",
                  tts_codec: str | AudioCodec = "pcm16",
                  target_codec: str | AudioCodec = "pcm16",
@@ -67,6 +68,14 @@ class RTPServer:
         self.target_codec = target_codec
         self.tts_sample_rate = tts_sample_rate
         self.target_sample_rate = target_sample_rate
+        logger.info((
+            "TTS settings:\n"
+            f"tts_response_format: {self.tts_response_format}\n"
+            f"tts_codec: {self.tts_codec}\n"
+            f"target_codec: {self.target_codec}\n"
+            f"tts_sample_rate: {self.tts_sample_rate}\n"
+            f"target_sample_rate: {self.target_sample_rate}\n"
+            ))
 
         # silence settings
         self.silence_interval = silence_interval
@@ -408,7 +417,11 @@ class RTPServer:
                 # Send the packet
                 if self.peer_ip and self.peer_port:
                     logger.debug(f"*** SENDING RTP PACKET *** to {self.peer_ip}:{self.peer_port}, size={len(rtp.as_bytes)} bytes, seq={sequence_number}")
-                    self.sock.sendto(rtp.as_bytes, (self.peer_ip, self.peer_port))
+                    try:
+                        self.sock.sendto(rtp.as_bytes, (self.peer_ip, self.peer_port))
+                    except Exception as e:
+                        logger.error(f"Error sending RTP packet: {e}")
+                        break
                 else:
                     logger.warning("Cannot send RTP packet: peer address not set")
                     break
