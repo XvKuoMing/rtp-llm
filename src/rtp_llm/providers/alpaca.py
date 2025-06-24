@@ -72,7 +72,7 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
             else:
                 self.tts_client = None
 
-        if not self.stt_client or not self.tts_client:
+        if not self.stt_client and not self.tts_client:
             raise ValueError("STT or TTS client is not set")
 
     @property
