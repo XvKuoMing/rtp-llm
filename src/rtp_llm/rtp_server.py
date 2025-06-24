@@ -25,6 +25,7 @@ from .vad import BaseVAD
 from .flow import BaseChatFlowManager
 from .agents import VoiceAgent
 from .audio_logger import AudioLogger
+from .providers import Message
 
 DEFAULT_SAMPLE_RATE = 8000
 DEFAULT_MIN_PACK_DURATION = 1 # seconds
@@ -153,6 +154,7 @@ class RTPServer:
             else:
                 logger.info(f"Sending first message to peer {self.peer_ip}:{self.peer_port}")
                 self.agent_task = asyncio.create_task(self._speak(first_message))
+                self.agent.history_manager.add_message(Message(role="user", content=first_message))
                 first_message = None
         
         while True:
@@ -203,6 +205,7 @@ class RTPServer:
                 if first_message:
                     logger.info("Sending first message to newly discovered peer")
                     self.agent_task = asyncio.create_task(self._speak(first_message))
+                    self.agent.history_manager.add_message(Message(role="user", content=first_message))
                     first_message = None
                     
                 # Process packet in background to avoid blocking the receive loop

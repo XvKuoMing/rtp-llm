@@ -136,10 +136,6 @@ def initialize_providers():
 
 # Initialize voice agent
 def create_voice_agent():
-    # Ensure providers are initialized if not already done
-    if stt_provider is None or tts_provider is None:
-        logger.info("Providers not initialized, initializing now...")
-        initialize_providers()
     
     try:
         voice_agent = VoiceAgent(

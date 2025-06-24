@@ -93,8 +93,8 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
     async def stt(self, 
                   formatted_data: List[Union[AudioOpenAIMessage, TextOpenAIMessage]],
                   gen_config: Optional[Dict[str, Any]] = None) -> str:
-        if not self.stt_model:
-            raise ValueError("STT model is not set")
+        if not self.stt_client:
+            raise ValueError("STT client is not set")
         if gen_config is None:
             gen_config = {}
         response = await self.stt_client.chat.completions.create(
@@ -110,8 +110,8 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
     async def stt_stream(self, 
                          formatted_data: List[Union[AudioOpenAIMessage, TextOpenAIMessage]],
                          gen_config: Optional[Dict[str, Any]] = None) -> AsyncGenerator[str, None]:
-        if not self.stt_model:
-            raise ValueError("STT model is not set")
+        if not self.stt_client:
+            raise ValueError("STT client is not set")
         if gen_config is None:
             gen_config = {}
         response = await self.stt_client.chat.completions.create(
@@ -130,8 +130,8 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
                   text: str, 
                   response_format: str = "pcm", 
                   gen_config: Optional[Dict[str, Any]] = None) -> bytes:
-        if not self.tts_model:
-            raise ValueError("TTS model is not set")
+        if not self.tts_client:
+            raise ValueError("TTS client is not set")
         if gen_config is None:
             gen_config = {"voice": "nova"}
         response = await self.tts_client.audio.speech.create(
@@ -146,8 +146,8 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
                          text: str, 
                          response_format: str = "pcm", 
                          gen_config: Optional[Dict[str, Any]] = None) -> AsyncGenerator[bytes, None]:
-        if not self.tts_model:
-            raise ValueError("TTS model is not set")
+        if not self.tts_client:
+            raise ValueError("TTS client is not set")
         if gen_config is None:
             gen_config = {"voice": "nova"}
         async with self.tts_client.audio.speech.with_streaming_response.create(

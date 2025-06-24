@@ -39,7 +39,6 @@ class GeminiSTTProvider(BaseSTTProvider):
                   gen_config: Optional[Dict[str, Any]] = None) -> str:
         if gen_config is None:
             gen_config = {}
-        # try:
         response = await self.client.aio.models.generate_content(
             model=self.model,
             contents=formatted_data,
@@ -48,10 +47,6 @@ class GeminiSTTProvider(BaseSTTProvider):
                 **gen_config
             ),
         )
-        # except Exception as e:
-        #     with open("error.txt", "w") as f:
-        #         f.write(str(formatted_data))
-        #     raise e
         if isinstance(response, types.GenerateContentResponse):
             return response.text
         else:
