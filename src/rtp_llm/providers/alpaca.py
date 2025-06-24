@@ -58,21 +58,22 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
         self.tts_api_key = overwrite_tts_model_api_key or api_key
         self.tts_base_url = overwrite_tts_model_base_url or base_url
 
-        if self.stt_base_url == self.tts_base_url and self.stt_api_key == self.tts_api_key:
-            if self.stt_api_key is None:
-                self.tts_client = None
-            else:
-                self.tts_client = AsyncOpenAI(api_key=self.tts_api_key, base_url=self.tts_base_url)
-            self.stt_client = self.tts_client
+
+        if self.stt_api_key:
+            self.stt_client = AsyncOpenAI(api_key=self.stt_api_key, base_url=self.stt_base_url)
         else:
-            if self.stt_api_key is None:
+            self.stt_client = None
+        
+        if self.tts_api_key == self.stt_api_key and self.tts_base_url == self.stt_base_url:
+            self.tts_client = self.stt_client
+        else:
+            if self.tts_api_key:
+                self.tts_client = AsyncOpenAI(api_key=self.tts_api_key, base_url=self.tts_base_url)
+            else:
                 self.tts_client = None
-            else:
-                self.tts_client = AsyncOpenAI(api_key=self.stt_api_key, base_url=self.stt_base_url)
-            if self.stt_api_key is None:
-                self.stt_client = None
-            else:
-                self.stt_client = AsyncOpenAI(api_key=self.stt_api_key, base_url=self.stt_base_url)
+
+        if not self.stt_client or not self.tts_client:
+            raise ValueError("STT or TTS client is not set")
 
     @property
     def system_prompt(self) -> Optional[str]:

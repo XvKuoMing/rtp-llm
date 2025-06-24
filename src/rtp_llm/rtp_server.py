@@ -289,6 +289,7 @@ class RTPServer:
             wav_bytes = await pcm2wav(pcm16_frames)
             if not wav_bytes:
                 logger.warning("Empty WAV bytes, skipping STT")
+                self.buffer.clear() # clearing buffer to avoid accumulation of empty frames
                 return
             stt_response = await self.agent.stt(
                 wav_bytes, 
