@@ -10,7 +10,6 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
-
 async def pcm2wav(pcm16: bytes, sample_rate: int = 8000) -> bytes:
     """convert pcm16 to wav"""
     # First ensure audio quality is good
@@ -66,5 +65,59 @@ async def resample_pcm16(pcm16: bytes, original_sample_rate: int = 24000, target
     resampled_int16 = (resampled_float * 32767.0).astype(np.int16)  # Use 32767 instead of 32768
     
     return resampled_int16.tobytes()
+
+
+async def wav2pcm(wav_bytes: bytes) -> bytes:
+    """Extract PCM16 data from WAV bytes
+    
+    Args:
+        wav_bytes: WAV file as bytes
+        
+    Returns:
+        PCM16 data as bytes (16-bit signed integers, little-endian)
+        
+    Raises:
+        ValueError: If the WAV file cannot be parsed or has unsupported format
+    """
+    try:
+        buf = io.BytesIO(wav_bytes)
+        with wave.open(buf, 'rb') as wav:
+            # Get WAV parameters
+            channels = wav.getnchannels()
+            sample_width = wav.getsampwidth() 
+            sample_rate = wav.getframerate()
+            n_frames = wav.getnframes()
+            
+            logger.debug(f"WAV format: {channels} channels, {sample_width} bytes/sample, {sample_rate} Hz, {n_frames} frames")
+            
+            # Read all audio frames
+            audio_data = wav.readframes(n_frames)
+            
+            # Convert to PCM16 mono if necessary
+            if sample_width == 1:
+                # 8-bit to 16-bit
+                audio_data = audioop.bias(audio_data, 1, 128)  # Convert unsigned to signed
+                audio_data = audioop.lin2lin(audio_data, 1, 2)  # 8-bit to 16-bit
+            elif sample_width == 3:
+                # 24-bit to 16-bit
+                audio_data = audioop.lin2lin(audio_data, 3, 2)
+            elif sample_width == 4:
+                # 32-bit to 16-bit
+                audio_data = audioop.lin2lin(audio_data, 4, 2)
+            elif sample_width != 2:
+                raise ValueError(f"Unsupported sample width: {sample_width} bytes")
+            
+            # Convert stereo to mono if necessary
+            if channels == 2:
+                audio_data = audioop.tomono(audio_data, 2, 1, 1)  # Average both channels
+            elif channels > 2:
+                raise ValueError(f"Unsupported number of channels: {channels}")
+            
+            return audio_data
+            
+    except wave.Error as e:
+        raise ValueError(f"Invalid WAV file: {e}")
+    except Exception as e:
+        raise ValueError(f"Error processing WAV file: {e}")
 
 
