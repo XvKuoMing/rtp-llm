@@ -30,6 +30,8 @@ logger = logging.getLogger(__name__)
 logger.info(f"Seeking .env in current directory: {os.getcwd()}")
 load_dotenv()
 
+
+DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 SYSTEM = """
 You are a helpful assistant.
 """
@@ -187,6 +189,7 @@ class SingletonServer(RTPServer):
                 audio_logger=AudioLogger(uid=channel_id),
                 host_ip=self.__class__.__host_ip,
                 host_port=self.__class__.__host_port,
+                debug=DEBUG,
                 **kwargs
             )
             self.task = None
