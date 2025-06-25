@@ -120,13 +120,16 @@ class RTPServer:
         
         self.__init_socket()
 
-        # rtp sending settings
+        # RTP sending settings - FIXED: Initialize proper RTP state for continuous stream
         self.__ssrc = int(time.time()) & 0xFFFFFFFF
-        self.__last_seq_num = 0
+        self.__sequence_number = 0  # Start from 0 for compatibility
+        self.__timestamp_base = 0   # Initialize to 0, will be set on first packet
+        self.__total_samples_sent = 0  # Track total samples for continuous timestamps
+        self.__rtp_stream_active = False  # Track if we have an active RTP stream
         
         logger.info("=== RTP CONFIGURATION DEBUG ===")
         logger.info(f"RTP DEBUG - SSRC: 0x{self.__ssrc:08X} ({self.__ssrc})")
-        logger.info(f"RTP DEBUG - Initial sequence number: {self.__last_seq_num}")
+        logger.info(f"RTP DEBUG - Initial sequence number: {self.__sequence_number}")
         logger.info(f"RTP DEBUG - Max payload size: {MAX_PAYLOAD_SIZE} bytes")
         logger.info("=== RTP SERVER INITIALIZATION COMPLETE ===")
 
@@ -225,8 +228,10 @@ class RTPServer:
         while True:
             
             try:
-                # sending silence packet if not speaking
-                if self.agent_task is None or self.agent_task.done():
+                # FIXED: Only send silence packet if agent is not running AND we have a peer
+                # This prevents silence packets from interfering with speech
+                agent_running = self.agent_task is not None and not self.agent_task.done()
+                if not agent_running and self.peer_ip and self.peer_port:
                     await self._send_silence_packet()
                     silence_count += 1
                     if silence_count % 50 == 0:  # Log every 50 silence packets (every second)
@@ -469,20 +474,97 @@ class RTPServer:
             logger.error(f"AGENT DEBUG - Error in _run_agent: {e}", exc_info=True)
         
     
+    async def _send_silence_packet(self):
+        """Send a silence RTP packet to maintain connection using continuous RTP stream"""
+        if not self.peer_ip or not self.peer_port:
+            return
+        
+        logger.debug("=== SILENCE PACKET DEBUG ===")
+        
+        # Create silence audio data (zeros) - 20ms at target sample rate
+        samples_per_packet = int(self.target_sample_rate * self.silence_interval)
+        
+        # FIXED: Generate appropriate silence data based on target codec
+        if self.target_codec == "ulaw" or (isinstance(self.target_codec, AudioCodec) and self.target_codec == AudioCodec.PCMU):
+            # For ulaw, silence is 0xFF (127 in linear, encoded as 0xFF in ulaw)
+            silence_data = bytes([0xFF] * samples_per_packet)
+        elif self.target_codec == "alaw" or (isinstance(self.target_codec, AudioCodec) and self.target_codec == AudioCodec.PCMA):
+            # For alaw, silence is 0xD5 (0 in linear, encoded as 0xD5 in alaw)
+            silence_data = bytes([0xD5] * samples_per_packet)
+        else:
+            # For PCM16, silence is zeros
+            silence_data = struct.pack('<' + 'h' * samples_per_packet, *([0] * samples_per_packet))
+        
+        logger.debug(f"SILENCE DEBUG - Generated {len(silence_data)} bytes ({samples_per_packet} samples) for {self.silence_interval * 1000}ms")
+        
+        # FIXED: Use continuous RTP stream instead of creating new transmission context
+        await self._send_rtp_packet(silence_data, marker=False)
+        logger.debug(f"SILENCE DEBUG - Sent silence packet: {len(silence_data)} bytes to {self.peer_ip}:{self.peer_port}")
+        await asyncio.sleep(self.silence_interval)
+
+    async def _send_rtp_packet(self, audio_data: bytes, marker: bool = False, source_format: str = "pcm16"):
+        """Send a single RTP packet with continuous timestamp management"""
+        if not self.peer_ip or not self.peer_port:
+            logger.warning("TRANSMISSION DEBUG - Cannot send: peer address not set")
+            return
+        
+        # Initialize timestamp base on first packet
+        if not self.__rtp_stream_active:
+            self.__timestamp_base = int(time.time() * self.target_sample_rate) & 0xFFFFFFFF
+            self.__total_samples_sent = 0
+            self.__rtp_stream_active = True
+            logger.debug(f"RTP STREAM DEBUG - Initialized timestamp base: {self.__timestamp_base}")
+        
+        # Calculate current timestamp (continuous from base + total samples sent)
+        current_timestamp = (self.__timestamp_base + self.__total_samples_sent) & 0xFFFFFFFF
+        
+        # FIXED: Use existing enforce_rtp for codec conversion
+        rtp = RTPPacket.enforce_rtp(
+            data=audio_data,
+            format=source_format,
+            target=self.target_codec,
+            sequence_number=self.__sequence_number & 0xFFFF,
+            timestamp=current_timestamp,
+            ssrc=self.__ssrc,
+            marker=marker
+        )
+        
+        logger.debug(f"RTP PACKET DEBUG - Created packet:")
+        logger.debug(f"  - Sequence: {self.__sequence_number & 0xFFFF}")
+        logger.debug(f"  - Timestamp: {current_timestamp}")
+        logger.debug(f"  - Marker: {marker}")
+        logger.debug(f"  - Source format: {source_format}")
+        logger.debug(f"  - Target codec: {self.target_codec}")
+        logger.debug(f"  - Payload size: {len(rtp.payload)} bytes")
+        
+        # Send the packet
+        try:
+            self.sock.sendto(rtp.as_bytes, (self.peer_ip, self.peer_port))
+            logger.debug(f"*** SENT RTP PACKET #{self.__sequence_number} *** to {self.peer_ip}:{self.peer_port}")
+            
+            # Update RTP state
+            self.__sequence_number += 1
+            # FIXED: Calculate samples correctly based on source format (input to this function)
+            if source_format in ["ulaw", "alaw"]:
+                samples_in_packet = len(audio_data)  # 1 byte per sample for ulaw/alaw
+            else:
+                samples_in_packet = len(audio_data) // 2  # 2 bytes per sample for PCM16
+            
+            self.__total_samples_sent += samples_in_packet
+            logger.debug(f"RTP STREAM DEBUG - Samples in packet: {samples_in_packet}, total sent: {self.__total_samples_sent}")
+            
+        except Exception as e:
+            logger.error(f"TRANSMISSION DEBUG - Error sending packet: {e}")
+
     async def _speak(self, 
                      message: str):
         logger.info("=== TTS STREAMING DEBUG ===")
         logger.info(f"TTS DEBUG - Speaking message: '{message}'")
         logger.debug(f"TTS DEBUG - Message length: {len(message)} characters")
-        
-        # Initialize RTP transmission
-        logger.debug("RTP TRANSMISSION DEBUG - Initializing transmission")
-        send_packet = self.__start_transmission(format=self.tts_codec, target=self.target_codec)
-        next(send_packet) # initializing the coroutine
-        logger.debug("RTP TRANSMISSION DEBUG - Transmission coroutine initialized")
 
         chunk_count = 0
         total_bytes_processed = 0
+        first_chunk = True
         
         logger.info(f"TTS DEBUG - Starting TTS stream (format: {self.tts_response_format})")
         tts_stream = await self.agent.tts(message, stream=True, response_format=self.tts_response_format)
@@ -538,8 +620,21 @@ class RTPServer:
                     await self.audio_logger.log_ai(chunk)
                     logger.debug("AUDIO LOGGER DEBUG - AI audio chunk logged")
                 
-                logger.debug("RTP TRANSMISSION DEBUG - Sending chunk via RTP")
-                send_packet.send(chunk)
+                # FIXED: Let enforce_rtp handle codec conversion instead of manual conversion
+                # Send packets in appropriate sizes to avoid UDP fragmentation
+                chunk_offset = 0
+                while chunk_offset < len(chunk):
+                    remaining_data = len(chunk) - chunk_offset
+                    current_chunk_size = min(remaining_data, MAX_PAYLOAD_SIZE)
+                    current_chunk = chunk[chunk_offset:chunk_offset + current_chunk_size]
+                    
+                    # Mark first packet of utterance
+                    marker = first_chunk and chunk_offset == 0
+                    # Pass PCM16 data directly - enforce_rtp will handle codec conversion
+                    await self._send_rtp_packet(current_chunk, marker=marker, source_format="pcm16")
+                    
+                    chunk_offset += current_chunk_size
+                    first_chunk = False
                 
                 total_bytes_processed += len(chunk)
                 await asyncio.sleep(0.02) # Increased delay to reduce network congestion
@@ -552,10 +647,6 @@ class RTPServer:
                 logger.error(f"TTS DEBUG - Error processing chunk #{chunk_count + 1}: {e}")
                 continue
         
-        # Store last sequence number for next agent run
-        self.__last_seq_num -= 1
-        logger.debug(f"RTP DEBUG - Updated last sequence number to: {self.__last_seq_num}")
-        
         # Save audio logs after speaking is complete (checkpoint)
         if self.audio_logger:
             try:
@@ -566,120 +657,6 @@ class RTPServer:
                 logger.error(f"AUDIO LOGGER DEBUG - Error saving audio logs: {e}")
         
         logger.info(f"TTS DEBUG - Agent completed: sent {chunk_count} RTP packets, {total_bytes_processed} bytes total")
-
-    async def _send_silence_packet(self):
-        """Send a silence RTP packet to maintain connection"""
-        if not self.peer_ip or not self.peer_port:
-            return
-        
-        logger.debug("=== SILENCE PACKET DEBUG ===")
-        
-        # Create silence audio data (zeros) - 20ms at target sample rate
-        samples_per_packet = int(self.target_sample_rate * self.silence_interval)
-        silence_data = struct.pack('<' + 'h' * samples_per_packet, *([0] * samples_per_packet))
-        
-        logger.debug(f"SILENCE DEBUG - Generated {len(silence_data)} bytes ({samples_per_packet} samples) for {self.silence_interval * 1000}ms")
-        
-        send_packet = self.__start_transmission(format="pcm16", 
-                                                target=self.target_codec)
-        next(send_packet)  # Initialize the coroutine
-        logger.debug("SILENCE DEBUG - Transmission coroutine initialized")
-        
-        send_packet.send(silence_data)
-        logger.debug(f"SILENCE DEBUG - Sent silence packet: {len(silence_data)} bytes to {self.peer_ip}:{self.peer_port}")
-        await asyncio.sleep(self.silence_interval)
-
-
-
-    def __start_transmission(self, 
-                     format: str | AudioCodec, 
-                     target: str | AudioCodec
-                     ):
-        """
-        send rtp packet corotine
-        accepts format and target as strings [pcm16, ulaw, alaw] or AudioCodec enums [AudioCodec.L16_1CH, AudioCodec.PCMU, AudioCodec.PCMA]
-        """
-        logger.debug("=== RTP TRANSMISSION INIT DEBUG ===")
-        logger.debug(f"TRANSMISSION DEBUG - Format: {format} (type: {type(format)})")
-        logger.debug(f"TRANSMISSION DEBUG - Target: {target} (type: {type(target)})")
-        
-        # initializing RTP transmission state
-        sequence_number = self.__last_seq_num + 1
-        # Fixed: Use target_sample_rate for timestamp calculation to match the actual audio rate
-        timestamp = int(time.time() * self.target_sample_rate)  # Convert to sample units using correct rate
-        ssrc = self.__ssrc
-        first_chunk = True
-
-        logger.debug(f"TRANSMISSION DEBUG - Initial sequence: {sequence_number}")
-        logger.debug(f"TRANSMISSION DEBUG - Initial timestamp: {timestamp}")
-        logger.debug(f"TRANSMISSION DEBUG - SSRC: 0x{ssrc:08X}")
-
-        total_samples_sent = 0
-        packet_count = 0
-
-        while True:
-            chunk = yield
-
-            logger.debug(f"TRANSMISSION DEBUG - Processing chunk: {len(chunk)} bytes")
-            
-            # Split large chunks into smaller packets to avoid UDP fragmentation
-            chunk_offset = 0
-            chunk_packets = 0
-            
-            while chunk_offset < len(chunk):
-                # Calculate chunk size for this packet
-                remaining_data = len(chunk) - chunk_offset
-                current_chunk_size = min(remaining_data, MAX_PAYLOAD_SIZE)
-                current_chunk = chunk[chunk_offset:chunk_offset + current_chunk_size]
-
-                logger.debug(f"TRANSMISSION DEBUG - Packet #{packet_count + 1}: {len(current_chunk)} bytes (offset {chunk_offset})")
-
-                rtp = RTPPacket.enforce_rtp(
-                    data=current_chunk,
-                    format=format, target=target,
-                    sequence_number=sequence_number & 0xFFFF,  # 16-bit sequence number
-                    timestamp=(timestamp + total_samples_sent) & 0xFFFFFFFF,  # 32-bit timestamp
-                    ssrc=ssrc,
-                    marker=first_chunk  # Mark first packet of utterance
-                )
-
-                logger.debug(f"RTP PACKET DEBUG - Created packet:")
-                logger.debug(f"  - Sequence: {sequence_number & 0xFFFF}")
-                logger.debug(f"  - Timestamp: {(timestamp + total_samples_sent) & 0xFFFFFFFF}")
-                logger.debug(f"  - Marker: {first_chunk}")
-                logger.debug(f"  - Payload size: {len(current_chunk)} bytes")
-                logger.debug(f"  - Total packet size: {len(rtp.as_bytes)} bytes")
-
-                # Send the packet
-                if self.peer_ip and self.peer_port:
-                    logger.debug(f"*** SENDING RTP PACKET #{packet_count + 1} *** to {self.peer_ip}:{self.peer_port}")
-                    try:
-                        self.sock.sendto(rtp.as_bytes, (self.peer_ip, self.peer_port))
-                        logger.debug(f"TRANSMISSION DEBUG - Successfully sent packet #{packet_count + 1}")
-                    except Exception as e:
-                        logger.error(f"TRANSMISSION DEBUG - Error sending packet #{packet_count + 1}: {e}")
-                        break
-                else:
-                    logger.warning("TRANSMISSION DEBUG - Cannot send: peer address not set")
-                    break
-
-                sequence_number += 1
-                chunk_offset += current_chunk_size
-                packet_count += 1
-                chunk_packets += 1
-                
-                # Update total samples sent
-                current_samples = len(current_chunk) * self.bytes_per_sample
-                total_samples_sent += current_samples
-                
-                logger.debug(f"TRANSMISSION DEBUG - Samples in packet: {current_samples}, total sent: {total_samples_sent}")
-                
-                first_chunk = False
-
-            logger.debug(f"TRANSMISSION DEBUG - Chunk complete: sent {chunk_packets} packets")
-            self.__last_seq_num = sequence_number - 1
-
-
 
     def close(self):
         """Close the RTP server and cleanup resources"""
