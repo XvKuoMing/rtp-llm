@@ -9,8 +9,8 @@ __version__ = "0.1.0"
 
 # Import main classes for easy access
 from .agents import VoiceAgent
-from .rtp_server import RTPServer
 from .audio_logger import AudioLogger
+from .server import Server
 
 # Import submodules
 from . import buffer
@@ -19,10 +19,11 @@ from . import history
 from . import providers
 from . import vad
 from . import utils
+from . import adapters
 
 __all__ = [
     "VoiceAgent",
-    "RTPServer", 
+    "Server", 
     "AudioLogger",
     "buffer",
     "flow",
@@ -30,4 +31,5 @@ __all__ = [
     "providers",
     "vad",
     "utils",
+    "adapters",
 ] 

@@ -3,12 +3,19 @@ import numpy as np
 import io
 import wave
 import logging
-import audioop
 import librosa
+import audioop
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+
+try:
+    import opuslib
+except Exception as e:
+    logger.error(f"Error importing opuslib: {e}")
+    opuslib = None
 
 async def pcm2wav(pcm16: bytes, sample_rate: int = 8000) -> bytes:
     """convert pcm16 to wav"""
@@ -45,8 +52,27 @@ async def pcm2wav(pcm16: bytes, sample_rate: int = 8000) -> bytes:
     return buf.getvalue()
 
 
+async def pcm2ulaw(pcm16: bytes) -> bytes:
+    """convert pcm16 to ulaw"""
+    return audioop.lin2ulaw(pcm16, 2)
+
+async def pcm2alaw(pcm16: bytes) -> bytes:
+    """convert pcm16 to alaw"""
+    return audioop.lin2alaw(pcm16, 2)
+
+
+async def pcm2opus(pcm16: bytes, sample_rate: int = 8000) -> bytes:
+    """convert pcm16 to opus"""
+    encoder = opuslib.Encoder(sample_rate, channels=1)
+    return encoder.encode(pcm16, frame_size=sample_rate//50)
+
+
 async def resample_pcm16(pcm16: bytes, original_sample_rate: int = 24000, target_sample_rate: int = 8000) -> bytes:
     """resample pcm16 to 8000hz, using librosa"""
+    if len(pcm16) % 2 != 0:
+        logger.warning(f"pcm16 length is not even, padding with 0")
+        pcm16 = pcm16 + b'\x00' * (2 - len(pcm16) % 2)
+
     pcm16_array = np.frombuffer(pcm16, dtype=np.int16)
     
     # Convert to float32 for librosa (normalize to [-1, 1] range)
@@ -67,57 +93,56 @@ async def resample_pcm16(pcm16: bytes, original_sample_rate: int = 24000, target
     return resampled_int16.tobytes()
 
 
-async def wav2pcm(wav_bytes: bytes) -> bytes:
-    """Extract PCM16 data from WAV bytes
-    
-    Args:
-        wav_bytes: WAV file as bytes
-        
-    Returns:
-        PCM16 data as bytes (16-bit signed integers, little-endian)
-        
-    Raises:
-        ValueError: If the WAV file cannot be parsed or has unsupported format
-    """
+async def ulaw2pcm(ulaw: bytes) -> bytes:
+    """convert ulaw to pcm16 using audioop"""
     try:
-        buf = io.BytesIO(wav_bytes)
-        with wave.open(buf, 'rb') as wav:
-            # Get WAV parameters
-            channels = wav.getnchannels()
-            sample_width = wav.getsampwidth() 
-            sample_rate = wav.getframerate()
-            n_frames = wav.getnframes()
-            
-            logger.debug(f"WAV format: {channels} channels, {sample_width} bytes/sample, {sample_rate} Hz, {n_frames} frames")
-            
-            # Read all audio frames
-            audio_data = wav.readframes(n_frames)
-            
-            # Convert to PCM16 mono if necessary
-            if sample_width == 1:
-                # 8-bit to 16-bit
-                audio_data = audioop.bias(audio_data, 1, 128)  # Convert unsigned to signed
-                audio_data = audioop.lin2lin(audio_data, 1, 2)  # 8-bit to 16-bit
-            elif sample_width == 3:
-                # 24-bit to 16-bit
-                audio_data = audioop.lin2lin(audio_data, 3, 2)
-            elif sample_width == 4:
-                # 32-bit to 16-bit
-                audio_data = audioop.lin2lin(audio_data, 4, 2)
-            elif sample_width != 2:
-                raise ValueError(f"Unsupported sample width: {sample_width} bytes")
-            
-            # Convert stereo to mono if necessary
-            if channels == 2:
-                audio_data = audioop.tomono(audio_data, 2, 1, 1)  # Average both channels
-            elif channels > 2:
-                raise ValueError(f"Unsupported number of channels: {channels}")
-            
-            return audio_data
-            
-    except wave.Error as e:
-        raise ValueError(f"Invalid WAV file: {e}")
+
+        # Convert μ-law to 16-bit linear PCM using audioop
+        # audioop.ulaw2lin(fragment, width) where width=2 for 16-bit
+        pcm16_data = audioop.ulaw2lin(ulaw, 2)
+        
+        logger.debug(f"Converted {len(ulaw)} μ-law bytes to {len(pcm16_data)} PCM16 bytes")
+        return pcm16_data
+        
     except Exception as e:
-        raise ValueError(f"Error processing WAV file: {e}")
+        logger.error(f"Error converting μ-law to PCM with audioop: {e}")
 
 
+async def alaw2pcm(alaw: bytes) -> bytes:
+    """convert alaw to pcm16 using audioop"""
+    try:
+        if audioop is None:
+            raise ImportError("audioop module not available")
+        
+        # Convert A-law to 16-bit linear PCM using audioop  
+        # audioop.alaw2lin(fragment, width) where width=2 for 16-bit
+        pcm16_data = audioop.alaw2lin(alaw, 2)
+        
+        logger.debug(f"Converted {len(alaw)} A-law bytes to {len(pcm16_data)} PCM16 bytes")
+        return pcm16_data
+        
+    except Exception as e:
+        logger.error(f"Error converting A-law to PCM with audioop: {e}")
+
+
+
+async def opus2pcm(opus: bytes, sample_rate: int = 8000) -> bytes:
+    """convert opus to pcm16"""
+    try:
+        # Create Opus decoder
+        decoder = opuslib.Decoder(sample_rate, channels=1)
+        
+        # Decode Opus to PCM
+        pcm_data = decoder.decode(opus, frame_size=sample_rate//50)  # 20ms frames typical
+        
+        # Convert to int16 if needed
+        if isinstance(pcm_data, bytes):
+            return pcm_data
+        else:
+            # If it's float, convert to int16
+            pcm_array = np.array(pcm_data, dtype=np.float32)
+            pcm16_array = (pcm_array * 32767).clip(-32768, 32767).astype(np.int16)
+            return pcm16_array.tobytes()
+            
+    except Exception as e:
+        logger.error(f"Error converting Opus to PCM: {e}")

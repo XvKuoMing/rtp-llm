@@ -10,14 +10,14 @@ class BaseAudioBuffer(ABC):
 
 
     @abstractmethod
-    def add_frame(self, frame: bytes):
+    async def add_frame(self, frame: bytes):
         """
         add frame to buffer
         """
         ...
 
     @abstractmethod
-    def get_frames(self) -> bytes:
+    async def get_frames(self) -> bytes:
         ...
     
     @abstractmethod
