@@ -8,7 +8,7 @@ import audioop
 
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 
 try:
@@ -24,7 +24,7 @@ async def pcm2wav(pcm16: bytes, sample_rate: int = 8000) -> bytes:
     
     # Basic noise gate with better threshold
     rms = np.sqrt(np.mean(pcm16_array.astype(np.float32)**2))
-    logger.debug(f"Audio RMS level: {rms}")
+    # logger.debug(f"Audio RMS level: {rms}")
     
     # If audio is too quiet, don't process
     if rms < 100:  # Increased threshold to filter out more noise
@@ -101,7 +101,7 @@ async def ulaw2pcm(ulaw: bytes) -> bytes:
         # audioop.ulaw2lin(fragment, width) where width=2 for 16-bit
         pcm16_data = audioop.ulaw2lin(ulaw, 2)
         
-        logger.debug(f"Converted {len(ulaw)} μ-law bytes to {len(pcm16_data)} PCM16 bytes")
+        # logger.debug(f"Converted {len(ulaw)} μ-law bytes to {len(pcm16_data)} PCM16 bytes")
         return pcm16_data
         
     except Exception as e:
@@ -118,7 +118,7 @@ async def alaw2pcm(alaw: bytes) -> bytes:
         # audioop.alaw2lin(fragment, width) where width=2 for 16-bit
         pcm16_data = audioop.alaw2lin(alaw, 2)
         
-        logger.debug(f"Converted {len(alaw)} A-law bytes to {len(pcm16_data)} PCM16 bytes")
+        # logger.debug(f"Converted {len(alaw)} A-law bytes to {len(pcm16_data)} PCM16 bytes")
         return pcm16_data
         
     except Exception as e:

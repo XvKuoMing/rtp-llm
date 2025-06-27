@@ -61,7 +61,7 @@ class Server:
                     await self.answer(buffer_audio)
                 elif (time.time() - self.last_response_time) > self.max_wait_time:
                     buffer_audio = await self.audio_buffer.get_frames()
-                    await self.speak(buffer_audio)
+                    await self.answer(buffer_audio)
                     await self.flow_manager.reset()
                 else:
                     pass # later, we will implement silence sending
