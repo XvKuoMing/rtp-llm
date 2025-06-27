@@ -491,7 +491,6 @@ def main():
         return
     
     logger.info(f"Starting API server on {args.host}:{args.port}")
-    logger.info(f"RTP server will bind to {args.rtp_host}:{args.rtp_port}")
     
     uvicorn.run(app, host=args.host, port=args.port, log_level=args.log_level.lower())
 
