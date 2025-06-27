@@ -272,6 +272,8 @@ class RTPAdapter(Adapter):
         except socket.error as e:
             if e.errno == 10035:  # WSAEWOULDBLOCK on Windows
                 return None
+            elif e.errno == 11:  # EAGAIN/EWOULDBLOCK on Unix/Linux
+                return None
             elif e.errno == 10040:  # WSAEMSGSIZE on Windows - message too large
                 logger.warning(f"Received RTP packet larger than buffer size ({RTP_MAX_PACKET_SIZE} bytes). Consider increasing RTP_MAX_PACKET_SIZE.")
                 return None
