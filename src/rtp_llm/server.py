@@ -13,7 +13,7 @@ from .utils.audio_processing import pcm2wav
 from .audio_logger import AudioLogger
 from typing import Optional
 import random
-
+import time
 
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,8 @@ class Server:
                  audio_buffer: BaseAudioBuffer,
                  flow_manager: BaseChatFlowManager,
                  vad: BaseVAD,
-                 agent: VoiceAgent
+                 agent: VoiceAgent,
+                 max_wait_time: int = 7
                  ):
         self.adapter = adapter
         self.audio_buffer = audio_buffer
@@ -36,6 +37,8 @@ class Server:
         self.vad = vad
         self.agent = agent
         self.audio_logger = AudioLogger(uid=random.randint(0, 1000000), sample_rate=24_000)
+        self.max_wait_time = max_wait_time
+        self.last_response_time = time.time()
     
 
     async def run(self, first_message: Optional[str] = None):
@@ -56,6 +59,10 @@ class Server:
                 if await self.flow_manager.run_agent(vad_state):
                     buffer_audio = await self.audio_buffer.get_frames()
                     await self.answer(buffer_audio)
+                elif (time.time() - self.last_response_time) > self.max_wait_time:
+                    buffer_audio = await self.audio_buffer.get_frames()
+                    await self.speak(buffer_audio)
+                    await self.flow_manager.reset()
                 else:
                     pass # later, we will implement silence sending
             else:
@@ -101,6 +108,7 @@ class Server:
         
         logger.info(f"Finished sending {chunk_count} chunks, total {total_bytes} bytes")
         await self.audio_logger.save()
+        self.last_response_time = time.time()
         
 
     def close(self):
