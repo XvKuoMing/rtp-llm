@@ -77,11 +77,13 @@ class Server:
         """
         try:
             wav_audio = await pcm2wav(audio, sample_rate=self.adapter.sample_rate)
+            logger.info(f"Converted to wav, {len(wav_audio)} bytes")
             response = await self.agent.stt(
                 audio=wav_audio,
                 stream=False,
                 enable_history=True,
             )
+            logger.info(f"STT response: {response}")
             await self.speak(response)
         except Exception as e:
             logger.error(f"Error answering audio: {e}")
@@ -105,7 +107,8 @@ class Server:
             chunk_count += 1
             total_bytes += len(chunk)
 
-            await self.adapter.send_audio(chunk)
+            await self.adapter.send_audio(chunk, audio_sample_rate=24_000)
+            logger.info(f"Sent {len(chunk)} bytes")
             await self.audio_logger.log_ai(chunk)
         
         logger.info(f"Finished sending {chunk_count} chunks, total {total_bytes} bytes")

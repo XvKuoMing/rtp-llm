@@ -170,6 +170,7 @@ class RTPAdapter(Adapter):
         self.peer_port = peer_port
         self.sample_rate = sample_rate
         self.frame_size = self.sample_rate * RTP_INTER_PACKET_DELAY # must be multiple of 160 for 8kHz
+        logger.info(f"Frame size: {self.frame_size}")
 
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

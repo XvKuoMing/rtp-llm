@@ -96,7 +96,7 @@ async def resample_pcm16(pcm16: bytes, original_sample_rate: int = 24000, target
     # Convert back to int16 with proper clipping
     resampled_int16 = (resampled_float * 32767.0).clip(-32767, 32767).astype(np.int16)
     
-    logger.debug(f"Resampled from {original_sample_rate}Hz to {target_sample_rate}Hz, "
+    logger.info(f"Resampled from {original_sample_rate}Hz to {target_sample_rate}Hz, "
                 f"samples: {len(pcm16_array)} -> {len(resampled_int16)}, "
                 f"peak level: {peak:.3f}")
     
