@@ -55,6 +55,9 @@ class Server:
         while True:
             audio = await self.adapter.receive_audio()
             if audio is not None:
+                if self.speaking:
+                    # discarding user audio while speaking
+                    continue
                 await self.audio_buffer.add_frame(audio)
                 await self.audio_logger.log_user(audio)
                 buffer_audio = await self.audio_buffer.get_frames()
@@ -70,11 +73,13 @@ class Server:
                 logger.debug(f"VAD state: {vad_state}, speaking: {self.speaking}")
                 if await self.flow_manager.run_agent(vad_state):
                     logger.info("VAD: user speech ended, answering")
-                    await self.answer(buffer_audio)
+                    # await self.answer(buffer_audio)
+                    asyncio.create_task(self.answer(buffer_audio))
                     await self.flow_manager.reset()
                 elif (time.time() - self.last_response_time) > self.max_wait_time:
                     logger.info("VAD: max wait time reached, answering")
-                    await self.answer(buffer_audio)
+                    # await self.answer(buffer_audio)
+                    asyncio.create_task(self.answer(buffer_audio))
                     await self.flow_manager.reset()
                 else:
                     pass # later, we will implement silence sending
