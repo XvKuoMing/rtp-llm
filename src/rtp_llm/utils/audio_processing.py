@@ -22,24 +22,24 @@ async def pcm2wav(pcm16: bytes, sample_rate: int = 8000) -> bytes:
     # First ensure audio quality is good
     pcm16_array = np.frombuffer(pcm16, dtype=np.int16)
     
-    # Basic noise gate with better threshold
-    rms = np.sqrt(np.mean(pcm16_array.astype(np.float32)**2))
-    # logger.debug(f"Audio RMS level: {rms}")
+    # # Basic noise gate with better threshold
+    # rms = np.sqrt(np.mean(pcm16_array.astype(np.float32)**2))
+    # # logger.debug(f"Audio RMS level: {rms}")
     
-    # If audio is too quiet, don't process
-    if rms < 100:  # Increased threshold to filter out more noise
-        logger.warning(f"Audio too quiet (RMS: {rms}), returning empty response")
-        return None
+    # # If audio is too quiet, don't process
+    # if rms < 100:  # Increased threshold to filter out more noise
+    #     logger.warning(f"Audio too quiet (RMS: {rms}), returning empty response")
+    #     return None
         
-    # Check for clipping or distortion
-    peak_level = np.max(np.abs(pcm16_array))
-    if peak_level > 30000:  # Close to 16-bit limit (32767)
-        logger.warning(f"Audio may be clipped, peak level: {peak_level}")
+    # # Check for clipping or distortion
+    # peak_level = np.max(np.abs(pcm16_array))
+    # if peak_level > 30000:  # Close to 16-bit limit (32767)
+    #     logger.warning(f"Audio may be clipped, peak level: {peak_level}")
     
-    # Check for potential noise patterns
-    if np.std(pcm16_array.astype(np.float32)) < 10:
-        logger.warning(f"Low audio variation detected, possible noise or silent audio")
-        return None
+    # # Check for potential noise patterns
+    # if np.std(pcm16_array.astype(np.float32)) < 10:
+    #     logger.warning(f"Low audio variation detected, possible noise or silent audio")
+    #     return None
             
     # Create WAV from processed audio - do this as efficiently as possible
     buf = io.BytesIO()

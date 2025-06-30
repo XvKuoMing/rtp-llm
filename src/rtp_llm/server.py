@@ -40,6 +40,7 @@ class Server:
         self.audio_logger = AudioLogger(uid=random.randint(0, 1000000), sample_rate=adapter.sample_rate)
         self.max_wait_time = max_wait_time
         self.last_response_time = time.time()
+        self.speaking = False
     
 
     async def run(self, first_message: Optional[str] = None):
@@ -47,9 +48,9 @@ class Server:
         run the server
         """
         # Handle first message outside the main loop
-        if first_message is not None:
-            logger.info(f"Speaking first message: {first_message}")
-            await self.speak(first_message)
+        # if first_message is not None:
+        #     logger.info(f"Speaking first message: {first_message}")
+        #     await self.speak(first_message)
 
         while True:
             audio = await self.adapter.receive_audio()
@@ -60,6 +61,9 @@ class Server:
                 last_second = self.adapter.sample_rate * 2 # 2 bytes per sample for pcm16
                 if len(buffer_audio) < last_second:
                     logger.debug(f"Not enough audio in buffer, {len(buffer_audio)} bytes, waiting for more")
+                    continue
+                if self.speaking:
+                    logger.debug("Already speaking, skipping VAD")
                     continue
                 last_second_of_audio = buffer_audio[-last_second:] # cutting last second of audio
                 vad_state = await self.vad.detect(last_second_of_audio)
@@ -102,6 +106,7 @@ class Server:
         """
         speak the text
         """
+        self.speaking = True
         speech = await self.agent.tts(
             text=text,
             stream=True,
@@ -129,6 +134,7 @@ class Server:
         logger.info(f"Finished sending {chunk_count} chunks, total {total_bytes} bytes")
         await self.audio_logger.save()
         self.last_response_time = time.time()
+        self.speaking = False
         
 
     def close(self):
