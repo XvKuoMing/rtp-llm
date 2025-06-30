@@ -213,6 +213,7 @@ class RTPAdapter(Adapter):
                 audio = await pcm2opus(audio)
             else:
                 logger.warning("keeping audio as pcm, since codec has not been detected")
+        first_chunk = True
         while len(audio) > 0:
             chunk = audio[:RTP_CHUNK_SIZE]
             rtp_packet = RTPPacket(
@@ -221,7 +222,7 @@ class RTPAdapter(Adapter):
                     padding=False,
                     extension=False,
                     csrc_count=0,
-                    marker=False,
+                    marker=first_chunk,
                     payload_type=self.target_codec,
                     sequence_number=self.__sequence_number,
                     timestamp=self.__timestamp,
@@ -229,11 +230,12 @@ class RTPAdapter(Adapter):
                 ),
                 payload=chunk
             )
+            first_chunk = False
             
             try:
                 self.socket.sendto(rtp_packet.as_bytes, (self.peer_ip, self.peer_port))
                 await asyncio.sleep(0.017) # small delay to prevent busy waiting
-                logger.info(f"Sent RTP packet: seq={rtp_packet.header.sequence_number}, ts={rtp_packet.header.timestamp}, len={len(chunk)}")
+                logger.info(f"Sent RTP packet: seq={rtp_packet.header.sequence_number}, ts={rtp_packet.header.timestamp}, len={len(chunk)}, to {self.peer_ip}:{self.peer_port}")
             except Exception as e:
                 logger.error(f"Error sending RTP packet: {e}")
 

@@ -186,6 +186,7 @@ class SingletonServer:
         
         try:
             # Create RTP adapter
+            logger.info(f"Creating RTP adapter with host_ip: {self.__class__.__host_ip}, host_port: {self.__class__.__host_port}, peer_ip: {kwargs.get('peer_ip')}, peer_port: {kwargs.get('peer_port')}, sample_rate: {kwargs.get('target_sample_rate', 8000)}, target_codec: {kwargs.get('target_codec', 'pcm')}")
             adapter = RTPAdapter(
                 host_ip=self.__class__.__host_ip or "0.0.0.0",
                 host_port=self.__class__.__host_port or 5000,
