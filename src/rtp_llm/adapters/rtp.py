@@ -192,7 +192,7 @@ class RTPAdapter(Adapter):
         samples = audio_length_bytes // self.bytes_per_sample
         return self.__timestamp + samples
 
-    async def send_audio(self, audio: bytes, audio_sample_rate: int = 8_000) -> None:
+    async def send_audio(self, audio: bytes, audio_sample_rate: int = 24_000) -> None:
         if self.peer_ip is None or self.peer_port is None:
             logger.warning("Peer IP and port are not set, skipping send")
             return
@@ -205,11 +205,14 @@ class RTPAdapter(Adapter):
         
         if self.target_codec != AudioCodec.PCM:
             if self.target_codec == AudioCodec.ULAW:
+                logger.info("converting to ulaw")
                 audio = await pcm2ulaw(audio)
             elif self.target_codec == AudioCodec.ALAW:
                 audio = await pcm2alaw(audio)
             elif self.target_codec == AudioCodec.OPUS:
                 audio = await pcm2opus(audio)
+            else:
+                logger.warning("keeping audio as pcm, since codec has not been detected")
         while len(audio) > 0:
             chunk = audio[:RTP_CHUNK_SIZE]
             rtp_packet = RTPPacket(
@@ -230,7 +233,7 @@ class RTPAdapter(Adapter):
             try:
                 self.socket.sendto(rtp_packet.as_bytes, (self.peer_ip, self.peer_port))
                 await asyncio.sleep(0.017) # small delay to prevent busy waiting
-                logger.debug(f"Sent RTP packet: seq={rtp_packet.header.sequence_number}, ts={rtp_packet.header.timestamp}, len={len(chunk)}")
+                logger.info(f"Sent RTP packet: seq={rtp_packet.header.sequence_number}, ts={rtp_packet.header.timestamp}, len={len(chunk)}")
             except Exception as e:
                 logger.error(f"Error sending RTP packet: {e}")
 
