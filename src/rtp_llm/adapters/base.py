@@ -15,7 +15,12 @@ class Adapter:
                  sample_rate: int = 8000,
                  target_codec: str | int = "pcm",
                  **kwargs):
-        ...
+        self.host_ip = host_ip
+        self.host_port = host_port
+        self.peer_ip = peer_ip
+        self.peer_port = peer_port
+        self.sample_rate = sample_rate
+        self.target_codec = target_codec
 
     @abstractmethod
     async def send_audio(self, audio_pcm16: bytes, sample_rate: int = 24_000) -> None:

@@ -192,15 +192,15 @@ class RTPAdapter(Adapter):
         samples = audio_length_bytes // self.bytes_per_sample
         return self.__timestamp + samples
 
-    async def send_audio(self, audio: bytes, sample_rate: int = 8_000) -> None:
+    async def send_audio(self, audio: bytes, audio_sample_rate: int = 8_000) -> None:
         if self.peer_ip is None or self.peer_port is None:
             logger.warning("Peer IP and port are not set, skipping send")
             return
 
-        if sample_rate != self.sample_rate:
+        if audio_sample_rate != self.sample_rate:
             audio = await resample_pcm16(
                 audio, 
-                original_sample_rate=sample_rate, 
+                original_sample_rate=audio_sample_rate, 
                 target_sample_rate=self.sample_rate)
         
         if self.target_codec != AudioCodec.PCM:

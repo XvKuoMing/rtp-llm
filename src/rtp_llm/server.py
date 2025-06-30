@@ -36,7 +36,7 @@ class Server:
         self.flow_manager = flow_manager
         self.vad = vad
         self.agent = agent
-        self.audio_logger = AudioLogger(uid=random.randint(0, 1000000), sample_rate=24_000)
+        self.audio_logger = AudioLogger(uid=random.randint(0, 1000000), sample_rate=adapter.sample_rate)
         self.max_wait_time = max_wait_time
         self.last_response_time = time.time()
     
@@ -74,7 +74,7 @@ class Server:
         answer the audio
         """
         try:
-            wav_audio = await pcm2wav(audio)
+            wav_audio = await pcm2wav(audio, sample_rate=self.adapter.sample_rate)
             response = await self.agent.stt(
                 audio=wav_audio,
                 stream=False,
