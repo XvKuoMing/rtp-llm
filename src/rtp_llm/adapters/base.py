@@ -23,10 +23,9 @@ class Adapter:
         self.target_codec = target_codec
 
     @abstractmethod
-    async def send_audio(self, audio_pcm16: bytes, audio_sample_rate: int = 24_000) -> None:
+    async def send_audio(self, audio_pcm16: bytes) -> None:
         """
-        send audio chunk, must handle conversion from pcm16 to target codec and resampling if needed
-        audio_sample_rate is the sample rate of the audio chunk
+        given audio_pcm16 in self.sample_rate, send audio chunk, must handle conversion from pcm16 to target codec
         """
         ...
 

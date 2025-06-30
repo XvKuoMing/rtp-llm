@@ -9,7 +9,7 @@ from .buffer import BaseAudioBuffer
 from .flow import BaseChatFlowManager
 from .agents import VoiceAgent
 from .vad import BaseVAD
-from .utils.audio_processing import pcm2wav
+from .utils.audio_processing import pcm2wav, resample_pcm16
 from .audio_logger import AudioLogger
 from typing import Optional
 import random
@@ -19,6 +19,7 @@ import time
 logger = logging.getLogger(__name__)
 
 TTS_RESPONSE_FORMAT = "pcm"
+TTS_SAMPLE_RATE = 24_000
 
 
 class Server:
@@ -55,14 +56,20 @@ class Server:
             if audio is not None:
                 await self.audio_buffer.add_frame(audio)
                 await self.audio_logger.log_user(audio)
-                vad_state = await self.vad.detect(audio)
+                buffer_audio = await self.audio_buffer.get_frames()
+                last_second = self.adapter.sample_rate * 2 # 2 bytes per sample for pcm16
+                if len(buffer_audio) < last_second:
+                    logger.debug(f"Not enough audio in buffer, {len(buffer_audio)} bytes, waiting for more")
+                    continue
+                last_second_of_audio = buffer_audio[-last_second:] # cutting last second of audio
+                vad_state = await self.vad.detect(last_second_of_audio)
                 if await self.flow_manager.run_agent(vad_state):
                     logger.info("VAD: user speech ended, answering")
-                    buffer_audio = await self.audio_buffer.get_frames()
+                    # buffer_audio = await self.audio_buffer.get_frames()
                     await self.answer(buffer_audio)
                 elif (time.time() - self.last_response_time) > self.max_wait_time:
                     logger.info("VAD: max wait time reached, answering")
-                    buffer_audio = await self.audio_buffer.get_frames()
+                    # buffer_audio = await self.audio_buffer.get_frames()
                     await self.answer(buffer_audio)
                     await self.flow_manager.reset()
                 else:
@@ -85,6 +92,7 @@ class Server:
             )
             logger.info(f"STT response: {response}")
             await self.speak(response)
+            self.audio_buffer.clear()
         except Exception as e:
             logger.error(f"Error answering audio: {e}")
             return None
@@ -107,7 +115,14 @@ class Server:
             chunk_count += 1
             total_bytes += len(chunk)
 
-            await self.adapter.send_audio(chunk, audio_sample_rate=24_000)
+
+            if TTS_SAMPLE_RATE != self.adapter.sample_rate:
+                logger.info(f"Resampling audio from {TTS_SAMPLE_RATE}Hz to {self.adapter.sample_rate}Hz")
+                chunk = await resample_pcm16(chunk, 
+                                             original_sample_rate=TTS_SAMPLE_RATE, 
+                                             target_sample_rate=self.adapter.sample_rate)
+
+            await self.adapter.send_audio(chunk)
             logger.info(f"Sent {len(chunk)} bytes")
             await self.audio_logger.log_ai(chunk)
         

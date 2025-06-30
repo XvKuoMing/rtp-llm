@@ -204,7 +204,7 @@ class SingletonServer:
                 adapter=adapter,
                 audio_buffer=ArrayBuffer(),
                 flow_manager=CopyFlowManager(),
-                vad=WebRTCVAD(sample_rate=8000, aggressiveness=3, min_speech_duration_ms=500),
+                vad=WebRTCVAD(kwargs.get("target_sample_rate", 8000), aggressiveness=3, min_speech_duration_ms=500),
                 agent=voice_agent,
             )
             
