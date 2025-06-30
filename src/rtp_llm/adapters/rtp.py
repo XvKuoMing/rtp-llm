@@ -19,9 +19,9 @@ from dataclasses import dataclass
 from enum import Enum
 
 # Separate constants for sending and receiving
-RTP_CHUNK_SIZE = 1024  # Size for outgoing audio chunks
+# RTP_CHUNK_SIZE = 1024  # Size for outgoing audio chunks
 RTP_MAX_PACKET_SIZE = 8192  # Maximum size for incoming RTP packets (8KB should handle most cases)
-RTP_INTER_PACKET_DELAY = 0.02
+RTP_INTER_PACKET_DELAY = 0.02  # 20ms delay between packets
 
 logger = logging.getLogger(__name__)
 
@@ -195,25 +195,37 @@ class RTPAdapter(Adapter):
             return
 
         if audio_sample_rate != self.sample_rate:
+            logger.info(f"Resampling audio from {audio_sample_rate}Hz to {self.sample_rate}Hz")
             audio = await resample_pcm16(
                 audio, 
                 original_sample_rate=audio_sample_rate, 
                 target_sample_rate=self.sample_rate)
         
+        # Convert to target codec if necessary
         if self.target_codec != AudioCodec.PCM:
             if self.target_codec == AudioCodec.ULAW:
-                logger.info("converting to ulaw")
+                logger.info("Converting to ulaw")
                 audio = await pcm2ulaw(audio)
             elif self.target_codec == AudioCodec.ALAW:
+                logger.info("Converting to alaw")
                 audio = await pcm2alaw(audio)
             elif self.target_codec == AudioCodec.OPUS:
+                logger.info("Converting to opus")
                 audio = await pcm2opus(audio)
             else:
-                logger.warning("keeping audio as pcm, since codec has not been detected")
+                logger.warning("Keeping audio as pcm, since codec has not been detected")
+        
         first_chunk = True
-        samples_sent = 0
+        total_samples_sent = 0
+        chunk_count = 0
+        
         while len(audio) > 0:
-            chunk = audio[:RTP_CHUNK_SIZE]
+            # chunk = audio[:RTP_CHUNK_SIZE]
+            chunk = audio[:self.frame_size]
+            
+            # Calculate actual samples in this chunk
+            samples_in_chunk = len(chunk) // self.bytes_per_sample
+            
             rtp_packet = RTPPacket(
                 header=RTPHeader(
                     version=2,
@@ -232,22 +244,27 @@ class RTPAdapter(Adapter):
             
             try:
                 self.socket.sendto(rtp_packet.as_bytes, (self.peer_ip, self.peer_port))
-                await asyncio.sleep(RTP_INTER_PACKET_DELAY) # small delay to prevent busy waiting
-                logger.info(f"Sent RTP packet: seq={rtp_packet.header.sequence_number}, ts={rtp_packet.header.timestamp}, len={len(chunk)}, to {self.peer_ip}:{self.peer_port}")
+                
+                # Use a more precise timing based on actual samples
+                chunk_duration = samples_in_chunk / self.sample_rate
+                await asyncio.sleep(min(chunk_duration, RTP_INTER_PACKET_DELAY))
+                
+                logger.debug(f"Sent RTP packet: seq={rtp_packet.header.sequence_number}, ts={rtp_packet.header.timestamp}, len={len(chunk)} bytes, samples={samples_in_chunk}, to {self.peer_ip}:{self.peer_port}")
             except Exception as e:
                 logger.error(f"Error sending RTP packet: {e}")
+                break
 
-
-            # Update sequence number and timestamp
-            # self.__sequence_number = (self.__sequence_number + 1) & 0xFFFF
+            # Update sequence number and timestamp correctly
             self.__sequence_number = (self.__sequence_number + 1) % 65536
             self.__timestamp = (self.__timestamp + self.frame_size) >> 0
             # Timestamp should increment by number of samples, not bytes
-            samples_sent += len(chunk) // self.bytes_per_sample
+            # samples_sent += len(chunk) // self.bytes_per_sample
             # self.__timestamp = (self.__timestamp + samples_sent) & 0xFFFFFFFF
-            audio = audio[RTP_CHUNK_SIZE:]
+            audio = audio[self.frame_size:]
+            chunk_count += 1
+            total_samples_sent += samples_in_chunk
             
-        logger.info(f"Sent {samples_sent} samples")
+        logger.info(f"Sent {chunk_count} chunks, {total_samples_sent} samples, duration: {total_samples_sent/self.sample_rate:.2f}s")
 
     async def receive_audio(self) -> Optional[bytes]:
         try:

@@ -68,7 +68,7 @@ async def pcm2opus(pcm16: bytes, sample_rate: int = 8000) -> bytes:
 
 
 async def resample_pcm16(pcm16: bytes, original_sample_rate: int = 24000, target_sample_rate: int = 8000) -> bytes:
-    """resample pcm16 to 8000hz, using librosa"""
+    """resample pcm16 to target sample rate, using librosa with high quality settings"""
     if len(pcm16) % 2 != 0:
         logger.warning(f"pcm16 length is not even, padding with 0")
         pcm16 = pcm16 + b'\x00' * (2 - len(pcm16) % 2)
@@ -78,17 +78,27 @@ async def resample_pcm16(pcm16: bytes, original_sample_rate: int = 24000, target
     # Convert to float32 for librosa (normalize to [-1, 1] range)
     float_array = pcm16_array.astype(np.float32) / 32768.0
     
-    # Resample using librosa with better quality settings
+    # Use higher quality resampling parameters
     resampled_float = librosa.resample(
         float_array, 
         orig_sr=original_sample_rate, 
         target_sr=target_sample_rate,
-        res_type='kaiser_best'  # Higher quality resampling
+        res_type='kaiser_best',  # Higher quality resampling
+        fix=True,               # Center the filter
+        scale=False             # Don't scale to preserve energy
     )
     
-    # Convert back to int16 with proper clipping to avoid overflow
-    resampled_float = np.clip(resampled_float, -1.0, 1.0)
-    resampled_int16 = (resampled_float * 32767.0).astype(np.int16)  # Use 32767 instead of 32768
+    # Apply gentle normalization to prevent clipping while preserving dynamics
+    peak = np.max(np.abs(resampled_float))
+    if peak > 0.95:
+        resampled_float = resampled_float * (0.95 / peak)
+    
+    # Convert back to int16 with proper clipping
+    resampled_int16 = (resampled_float * 32767.0).clip(-32767, 32767).astype(np.int16)
+    
+    logger.debug(f"Resampled from {original_sample_rate}Hz to {target_sample_rate}Hz, "
+                f"samples: {len(pcm16_array)} -> {len(resampled_int16)}, "
+                f"peak level: {peak:.3f}")
     
     return resampled_int16.tobytes()
 
