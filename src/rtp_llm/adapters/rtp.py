@@ -21,6 +21,7 @@ from enum import Enum
 # Separate constants for sending and receiving
 RTP_CHUNK_SIZE = 1024  # Size for outgoing audio chunks
 RTP_MAX_PACKET_SIZE = 8192  # Maximum size for incoming RTP packets (8KB should handle most cases)
+RTP_INTER_PACKET_DELAY = 0.02
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +169,8 @@ class RTPAdapter(Adapter):
         self.peer_ip = peer_ip
         self.peer_port = peer_port
         self.sample_rate = sample_rate
+        self.frame_size = self.sample_rate * RTP_INTER_PACKET_DELAY # must be multiple of 160 for 8kHz
+
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         # Increase socket buffer sizes to handle larger RTP packets
@@ -185,12 +188,6 @@ class RTPAdapter(Adapter):
         self.samples_per_second = sample_rate
         self.target_codec = AudioCodec.from_codec(target_codec)
         self.bytes_per_sample = 2 if self.target_codec == AudioCodec.PCM else 1  # PCM16 = 2 bytes per sample
-
-    def _calculate_timestamp(self, audio_length_bytes: int) -> int:
-        """Calculate RTP timestamp based on sample count"""
-        # For PCM16: 2 bytes per sample
-        samples = audio_length_bytes // self.bytes_per_sample
-        return self.__timestamp + samples
 
     async def send_audio(self, audio: bytes, audio_sample_rate: int = 24_000) -> None:
         if self.peer_ip is None or self.peer_port is None:
@@ -214,6 +211,7 @@ class RTPAdapter(Adapter):
             else:
                 logger.warning("keeping audio as pcm, since codec has not been detected")
         first_chunk = True
+        samples_sent = 0
         while len(audio) > 0:
             chunk = audio[:RTP_CHUNK_SIZE]
             rtp_packet = RTPPacket(
@@ -234,18 +232,22 @@ class RTPAdapter(Adapter):
             
             try:
                 self.socket.sendto(rtp_packet.as_bytes, (self.peer_ip, self.peer_port))
-                await asyncio.sleep(0.017) # small delay to prevent busy waiting
+                await asyncio.sleep(RTP_INTER_PACKET_DELAY) # small delay to prevent busy waiting
                 logger.info(f"Sent RTP packet: seq={rtp_packet.header.sequence_number}, ts={rtp_packet.header.timestamp}, len={len(chunk)}, to {self.peer_ip}:{self.peer_port}")
             except Exception as e:
                 logger.error(f"Error sending RTP packet: {e}")
 
 
             # Update sequence number and timestamp
-            self.__sequence_number = (self.__sequence_number + 1) & 0xFFFF
+            # self.__sequence_number = (self.__sequence_number + 1) & 0xFFFF
+            self.__sequence_number = (self.__sequence_number + 1) % 65536
+            self.__timestamp = (self.__timestamp + self.frame_size) >> 0
             # Timestamp should increment by number of samples, not bytes
-            samples_sent = len(chunk) // self.bytes_per_sample
-            self.__timestamp = (self.__timestamp + samples_sent) & 0xFFFFFFFF
+            samples_sent += len(chunk) // self.bytes_per_sample
+            # self.__timestamp = (self.__timestamp + samples_sent) & 0xFFFFFFFF
             audio = audio[RTP_CHUNK_SIZE:]
+            
+        logger.info(f"Sent {samples_sent} samples")
 
     async def receive_audio(self) -> Optional[bytes]:
         try:
