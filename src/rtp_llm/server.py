@@ -84,13 +84,13 @@ class Server:
                 logger.info(f"Last second of audio: {len(last_second_of_audio)} bytes")
                 vad_state = await self.vad.detect(last_second_of_audio)
                 logger.info(f"VAD state: {vad_state}, speaking: {self.speaking}")
-                if (time.time() - self.last_response_time) > self.min_wait_time and \
-                    await self.flow_manager.run_agent(vad_state):
-                    logger.info("VAD: user speech ended, answering")
-                    # await self.answer(buffer_audio)
-                    asyncio.create_task(self.answer(buffer_audio))
-                    await self.flow_manager.reset()
-                elif (time.time() - self.last_response_time) > self.max_wait_time:
+                # if (time.time() - self.last_response_time) > self.min_wait_time and \
+                #     await self.flow_manager.run_agent(vad_state):
+                #     logger.info("VAD: user speech ended, answering")
+                #     # await self.answer(buffer_audio)
+                #     asyncio.create_task(self.answer(buffer_audio))
+                #     await self.flow_manager.reset()
+                if (time.time() - self.last_response_time) > self.max_wait_time:
                     logger.info("VAD: max wait time reached, answering")
                     # await self.answer(buffer_audio)
                     asyncio.create_task(self.answer(buffer_audio))
