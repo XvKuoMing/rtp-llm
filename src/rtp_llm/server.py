@@ -65,25 +65,17 @@ class Server:
             async with self.answer_lock:
                 if self.speaking:
                     # discarding user audio while speaking
-                    logger.info("Already speaking, discarding user audio")
                     continue
                 await self.audio_buffer.add_frame(audio)
-                logger.info(f"Added {len(audio)} bytes to buffer")
                 await self.audio_logger.log_user(audio)
                 buffer_audio = await self.audio_buffer.get_frames()
-                logger.info(f"Got {len(buffer_audio)} bytes from buffer")
                 last_second = self.adapter.sample_rate * 2 # 2 bytes per sample for pcm16
-                logger.info(f"Last second: {last_second}")
                 if len(buffer_audio) < last_second:
-                    logger.info(f"Not enough audio in buffer, {len(buffer_audio)} bytes, waiting for more")
                     continue
                 if self.speaking:
-                    logger.info("Already speaking, skipping VAD")
                     continue
                 last_second_of_audio = buffer_audio[-last_second:] # cutting last second of audio
-                logger.info(f"Last second of audio: {len(last_second_of_audio)} bytes")
                 vad_state = await self.vad.detect(last_second_of_audio)
-                logger.info(f"VAD state: {vad_state}, speaking: {self.speaking}")
                 # if (time.time() - self.last_response_time) > self.min_wait_time and \
                 #     await self.flow_manager.run_agent(vad_state):
                 #     logger.info("VAD: user speech ended, answering")

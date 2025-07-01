@@ -176,8 +176,8 @@ class RTPAdapter(Adapter):
         
         # Calculate frame size in bytes for the target codec
         self.samples_per_packet = int(self.sample_rate * RTP_INTER_PACKET_DELAY)  # 160 samples for 8kHz at 20ms | frame_size
-        # self.frame_size = samples_per_packet * self.bytes_per_sample  # bytes per packet
-        logger.info(f"bytes ({self.samples_per_packet} samples), sample rate: {self.sample_rate}, inter packet delay: {RTP_INTER_PACKET_DELAY}, codec: {self.target_codec}")
+        self.bytes_per_packet = self.samples_per_packet * self.bytes_per_sample
+        logger.info(f"bytes per packet: {self.bytes_per_packet} ({self.samples_per_packet} samples), sample rate: {self.sample_rate}, inter packet delay: {RTP_INTER_PACKET_DELAY}, codec: {self.target_codec}")
 
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -193,6 +193,9 @@ class RTPAdapter(Adapter):
         self.__timestamp = 0
 
     async def send_audio(self, audio: bytes) -> None:
+        """
+        recieves audio in pcm16 format (take a look at server.py file to see how it is converted to pcm16)
+        """
         if self.peer_ip is None or self.peer_port is None:
             logger.warning("Peer IP and port are not set, skipping send")
             return
@@ -217,10 +220,21 @@ class RTPAdapter(Adapter):
         
         while len(audio) > 0:
             # chunk = audio[:RTP_CHUNK_SIZE]
-            chunk = audio[:self.samples_per_packet]
+            chunk = audio[:self.bytes_per_packet]
             
             # Calculate actual samples in this chunk
             samples_in_chunk = len(chunk) // self.bytes_per_sample
+            
+            # MASSIVE LOGGING: Chunk details
+            logger.info(f"📦 === PACKET {chunk_count + 1} ===")
+            logger.info(f"📏 Chunk size: {len(chunk)} bytes (expected: {self.bytes_per_packet})")
+            logger.info(f"📊 Samples in chunk: {samples_in_chunk} (expected: {self.samples_per_packet})")
+            logger.info(f"🆔 Sequence: {self.__sequence_number}")
+            logger.info(f"⏰ Timestamp: {self.__timestamp}")
+            logger.info(f"🏷️ Marker bit: {first_chunk}")
+            
+            if len(chunk) != self.bytes_per_packet and len(audio) > self.bytes_per_packet:
+                logger.error(f"🚨 UNEXPECTED CHUNK SIZE! Got {len(chunk)}, expected {self.bytes_per_packet}")
             
             rtp_packet = RTPPacket(
                 header=RTPHeader(
@@ -243,7 +257,11 @@ class RTPAdapter(Adapter):
                 
                 # Use a more precise timing based on actual samples
                 chunk_duration = samples_in_chunk / self.sample_rate
-                await asyncio.sleep(min(chunk_duration, RTP_INTER_PACKET_DELAY))
+                sleep_duration = min(chunk_duration, RTP_INTER_PACKET_DELAY)
+                logger.info(f"⏱️ Chunk duration: {chunk_duration*1000:.2f}ms")
+                logger.info(f"⏱️ Sleep duration: {sleep_duration*1000:.2f}ms")
+                
+                await asyncio.sleep(sleep_duration)
                 
                 logger.info(f"Sent RTP packet: seq={rtp_packet.header.sequence_number}, ts={rtp_packet.header.timestamp}, len={len(chunk)} bytes, samples={samples_in_chunk}, to {self.peer_ip}:{self.peer_port}")
             except Exception as e:
@@ -252,12 +270,9 @@ class RTPAdapter(Adapter):
 
             # Update sequence number and timestamp correctly
             self.__sequence_number = (self.__sequence_number + 1) % 65536
-            # self.__timestamp = (self.__timestamp + self.frame_size) >> 0
+            # FIXED: Timestamp should increment by number of samples, not bytes
             self.__timestamp = (self.__timestamp + samples_in_chunk) & 0xFFFFFFFF
-            # Timestamp should increment by number of samples, not bytes
-            # samples_sent += len(chunk) // self.bytes_per_sample
-            # self.__timestamp = (self.__timestamp + samples_sent) & 0xFFFFFFFF
-            audio = audio[self.samples_per_packet:]
+            audio = audio[self.bytes_per_packet:]
             chunk_count += 1
             total_samples_sent += samples_in_chunk
             
