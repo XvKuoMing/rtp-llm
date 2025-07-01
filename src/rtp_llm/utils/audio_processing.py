@@ -54,11 +54,15 @@ async def pcm2wav(pcm16: bytes, sample_rate: int = 8000) -> bytes:
 
 async def pcm2ulaw(pcm16: bytes) -> bytes:
     """convert pcm16 to ulaw"""
-    return audioop.lin2ulaw(pcm16, 2)
+    ulaw_data = audioop.lin2ulaw(pcm16, 2)
+    logger.info(f"Converted {len(pcm16)} PCM16 bytes to {len(ulaw_data)} ulaw bytes")
+    return ulaw_data
 
 async def pcm2alaw(pcm16: bytes) -> bytes:
     """convert pcm16 to alaw"""
-    return audioop.lin2alaw(pcm16, 2)
+    alaw_data = audioop.lin2alaw(pcm16, 2)
+    logger.info(f"Converted {len(pcm16)} PCM16 bytes to {len(alaw_data)} alaw bytes")
+    return alaw_data
 
 
 async def pcm2opus(pcm16: bytes, sample_rate: int = 8000) -> bytes:
@@ -70,9 +74,10 @@ async def pcm2opus(pcm16: bytes, sample_rate: int = 8000) -> bytes:
 async def resample_pcm16(pcm16: bytes, original_sample_rate: int = 24000, target_sample_rate: int = 8000) -> bytes:
     """resample pcm16 to target sample rate, using librosa with high quality settings"""
     if len(pcm16) % 2 != 0:
-        logger.warning(f"pcm16 length is not even, padding with 0")
-        # pcm16 = pcm16 + b'\x00'
-        pcm16 = pcm16[:-1] # let's delete the last byte
+        logger.warning(f"Input pcm16 length is not even ({len(pcm16)}), truncating to even length")
+        # Ensure input has complete 16-bit samples
+        pcm16 += b'\x00'
+        # pcm16 = pcm16[:-1]
 
     pcm16_array = np.frombuffer(pcm16, dtype=np.int16)
     
@@ -89,6 +94,12 @@ async def resample_pcm16(pcm16: bytes, original_sample_rate: int = 24000, target
         scale=False             # Don't scale to preserve energy
     )
     
+    # Ensure we have an even number of samples for PCM16 (2 bytes per sample)
+    if len(resampled_float) % 2 == 1:
+        logger.warning(f"Resampled output has odd number of samples ({len(resampled_float)}), truncating by 1 sample")
+        # resampled_float = resampled_float[:-1]
+        resampled_float += 0.0
+    
     # Apply gentle normalization to prevent clipping while preserving dynamics
     peak = np.max(np.abs(resampled_float))
     if peak > 0.95:
@@ -99,6 +110,7 @@ async def resample_pcm16(pcm16: bytes, original_sample_rate: int = 24000, target
     
     logger.info(f"Resampled from {original_sample_rate}Hz to {target_sample_rate}Hz, "
                 f"samples: {len(pcm16_array)} -> {len(resampled_int16)}, "
+                f"bytes: {len(pcm16)} -> {len(resampled_int16.tobytes())}, "
                 f"peak level: {peak:.3f}")
     
     return resampled_int16.tobytes()

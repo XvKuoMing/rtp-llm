@@ -258,8 +258,8 @@ class RTPAdapter(Adapter):
                 # Use a more precise timing based on actual samples
                 chunk_duration = samples_in_chunk / self.sample_rate
                 sleep_duration = min(chunk_duration, RTP_INTER_PACKET_DELAY)
-                logger.info(f"⏱️ Chunk duration: {chunk_duration*1000:.2f}ms")
-                logger.info(f"⏱️ Sleep duration: {sleep_duration*1000:.2f}ms")
+                # logger.info(f"⏱️ Chunk duration: {chunk_duration*1000:.2f}ms")
+                # logger.info(f"⏱️ Sleep duration: {sleep_duration*1000:.2f}ms")
                 
                 await asyncio.sleep(sleep_duration)
                 
