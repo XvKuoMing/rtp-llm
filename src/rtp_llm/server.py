@@ -41,6 +41,7 @@ class Server:
         self.max_wait_time = max_wait_time
         self.last_response_time = time.time()
         self.speaking = False
+        self.answer_lock = asyncio.Lock()
     
 
     async def run(self, first_message: Optional[str] = None):
@@ -54,7 +55,12 @@ class Server:
 
         while True:
             audio = await self.adapter.receive_audio()
-            if audio is not None:
+            if audio is None:
+                # Small delay to prevent busy waiting when no audio is received
+                await asyncio.sleep(0.01)  # 10ms delay
+                continue
+
+            async with self.answer_lock:
                 if self.speaking:
                     # discarding user audio while speaking
                     continue
@@ -66,7 +72,7 @@ class Server:
                     logger.debug(f"Not enough audio in buffer, {len(buffer_audio)} bytes, waiting for more")
                     continue
                 if self.speaking:
-                    logger.debug("Already speaking, skipping VAD")
+                    logger.info("Already speaking, skipping VAD")
                     continue
                 last_second_of_audio = buffer_audio[-last_second:] # cutting last second of audio
                 vad_state = await self.vad.detect(last_second_of_audio)
@@ -75,7 +81,7 @@ class Server:
                     logger.info("VAD: user speech ended, answering")
                     # await self.answer(buffer_audio)
                     asyncio.create_task(self.answer(buffer_audio))
-                    await self.flow_manager.reset()
+                    # await self.flow_manager.reset()
                 elif (time.time() - self.last_response_time) > self.max_wait_time:
                     logger.info("VAD: max wait time reached, answering")
                     # await self.answer(buffer_audio)
@@ -83,9 +89,6 @@ class Server:
                     await self.flow_manager.reset()
                 else:
                     pass # later, we will implement silence sending
-            else:
-                # Small delay to prevent busy waiting when no audio is received
-                await asyncio.sleep(0.01)  # 10ms delay
     
     async def answer(self, audio: bytes):
         """
@@ -140,7 +143,7 @@ class Server:
             logger.info(f"Sent {len(chunk)} bytes")
             await self.audio_logger.log_ai(chunk)
         
-        logger.info(f"Finished sending {chunk_count} chunks, total {total_bytes} bytes")
+        logger.info(f"Finished speaking: {chunk_count} chunks, total {total_bytes} bytes")
         await self.audio_logger.save()
         self.last_response_time = time.time()
         self.speaking = False
