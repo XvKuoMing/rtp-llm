@@ -76,8 +76,8 @@ async def resample_pcm16(pcm16: bytes, original_sample_rate: int = 24000, target
     if len(pcm16) % 2 != 0:
         logger.warning(f"Input pcm16 length is not even ({len(pcm16)}), truncating to even length")
         # Ensure input has complete 16-bit samples
-        pcm16 += b'\x00'
-        # pcm16 = pcm16[:-1]
+        # pcm16 += b'\x00'
+        pcm16 = pcm16[:-1]
 
     pcm16_array = np.frombuffer(pcm16, dtype=np.int16)
     
@@ -107,6 +107,10 @@ async def resample_pcm16(pcm16: bytes, original_sample_rate: int = 24000, target
     
     # Convert back to int16 with proper clipping
     resampled_int16 = (resampled_float * 32767.0).clip(-32767, 32767).astype(np.int16)
+
+    if len(resampled_int16) % 2 == 1:
+        logger.warning(f"Converted to PCM16: Resampled output has odd number of samples ({len(resampled_int16)}), truncating by 1 sample")
+        resampled_int16 += 0
     
     logger.info(f"Resampled from {original_sample_rate}Hz to {target_sample_rate}Hz, "
                 f"samples: {len(pcm16_array)} -> {len(resampled_int16)}, "
