@@ -71,7 +71,8 @@ async def resample_pcm16(pcm16: bytes, original_sample_rate: int = 24000, target
     """resample pcm16 to target sample rate, using librosa with high quality settings"""
     if len(pcm16) % 2 != 0:
         logger.warning(f"pcm16 length is not even, padding with 0")
-        pcm16 = pcm16 + b'\x00'
+        # pcm16 = pcm16 + b'\x00'
+        pcm16 = pcm16[:-1] # let's delete the last byte
 
     pcm16_array = np.frombuffer(pcm16, dtype=np.int16)
     

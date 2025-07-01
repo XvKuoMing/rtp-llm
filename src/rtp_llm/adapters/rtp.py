@@ -226,12 +226,12 @@ class RTPAdapter(Adapter):
             samples_in_chunk = len(chunk) // self.bytes_per_sample
             
             # MASSIVE LOGGING: Chunk details
-            logger.info(f"📦 === PACKET {chunk_count + 1} ===")
-            logger.info(f"📏 Chunk size: {len(chunk)} bytes (expected: {self.bytes_per_packet})")
-            logger.info(f"📊 Samples in chunk: {samples_in_chunk} (expected: {self.samples_per_packet})")
-            logger.info(f"🆔 Sequence: {self.__sequence_number}")
-            logger.info(f"⏰ Timestamp: {self.__timestamp}")
-            logger.info(f"🏷️ Marker bit: {first_chunk}")
+            # logger.info(f"📦 === PACKET {chunk_count + 1} ===")
+            # logger.info(f"📏 Chunk size: {len(chunk)} bytes (expected: {self.bytes_per_packet})")
+            # logger.info(f"📊 Samples in chunk: {samples_in_chunk} (expected: {self.samples_per_packet})")
+            # logger.info(f"🆔 Sequence: {self.__sequence_number}")
+            # logger.info(f"⏰ Timestamp: {self.__timestamp}")
+            # logger.info(f"🏷️ Marker bit: {first_chunk}")
             
             if len(chunk) != self.bytes_per_packet and len(audio) > self.bytes_per_packet:
                 logger.error(f"🚨 UNEXPECTED CHUNK SIZE! Got {len(chunk)}, expected {self.bytes_per_packet}")
