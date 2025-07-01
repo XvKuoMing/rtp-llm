@@ -169,8 +169,15 @@ class RTPAdapter(Adapter):
         self.peer_ip = peer_ip
         self.peer_port = peer_port
         self.sample_rate = sample_rate
-        self.frame_size = int(self.sample_rate * RTP_INTER_PACKET_DELAY) # must be multiple of 160 for 8kHz
-        logger.info(f"Frame size: {self.frame_size}, sample rate: {self.sample_rate}, inter packet delay: {RTP_INTER_PACKET_DELAY}")
+        
+        # For calculating proper timestamps and frame sizes
+        self.target_codec = AudioCodec.from_codec(target_codec)
+        self.bytes_per_sample = 2 if self.target_codec == AudioCodec.PCM else 1  # PCM16 = 2 bytes per sample
+        
+        # Calculate frame size in bytes for the target codec
+        self.samples_per_packet = int(self.sample_rate * RTP_INTER_PACKET_DELAY)  # 160 samples for 8kHz at 20ms | frame_size
+        # self.frame_size = samples_per_packet * self.bytes_per_sample  # bytes per packet
+        logger.info(f"bytes ({self.samples_per_packet} samples), sample rate: {self.sample_rate}, inter packet delay: {RTP_INTER_PACKET_DELAY}, codec: {self.target_codec}")
 
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -184,23 +191,11 @@ class RTPAdapter(Adapter):
         self.__ssrc = int(time.time() * 1000) & 0xFFFFFFFF  # Use timestamp as SSRC
         self.__sequence_number = 0
         self.__timestamp = 0
-        
-        # For calculating proper timestamps
-        self.samples_per_second = sample_rate
-        self.target_codec = AudioCodec.from_codec(target_codec)
-        self.bytes_per_sample = 2 if self.target_codec == AudioCodec.PCM else 1  # PCM16 = 2 bytes per sample
 
     async def send_audio(self, audio: bytes) -> None:
         if self.peer_ip is None or self.peer_port is None:
             logger.warning("Peer IP and port are not set, skipping send")
             return
-
-        # if audio_sample_rate != self.sample_rate:
-        #     logger.info(f"Resampling audio from {audio_sample_rate}Hz to {self.sample_rate}Hz")
-        #     audio = await resample_pcm16(
-        #         audio, 
-        #         original_sample_rate=audio_sample_rate, 
-        #         target_sample_rate=self.sample_rate)
         
         # Convert to target codec if necessary
         if self.target_codec != AudioCodec.PCM:
@@ -222,7 +217,7 @@ class RTPAdapter(Adapter):
         
         while len(audio) > 0:
             # chunk = audio[:RTP_CHUNK_SIZE]
-            chunk = audio[:self.frame_size]
+            chunk = audio[:self.samples_per_packet]
             
             # Calculate actual samples in this chunk
             samples_in_chunk = len(chunk) // self.bytes_per_sample
@@ -250,18 +245,19 @@ class RTPAdapter(Adapter):
                 chunk_duration = samples_in_chunk / self.sample_rate
                 await asyncio.sleep(min(chunk_duration, RTP_INTER_PACKET_DELAY))
                 
-                logger.debug(f"Sent RTP packet: seq={rtp_packet.header.sequence_number}, ts={rtp_packet.header.timestamp}, len={len(chunk)} bytes, samples={samples_in_chunk}, to {self.peer_ip}:{self.peer_port}")
+                logger.info(f"Sent RTP packet: seq={rtp_packet.header.sequence_number}, ts={rtp_packet.header.timestamp}, len={len(chunk)} bytes, samples={samples_in_chunk}, to {self.peer_ip}:{self.peer_port}")
             except Exception as e:
                 logger.error(f"Error sending RTP packet: {e}")
                 break
 
             # Update sequence number and timestamp correctly
             self.__sequence_number = (self.__sequence_number + 1) % 65536
-            self.__timestamp = (self.__timestamp + self.frame_size) >> 0
+            # self.__timestamp = (self.__timestamp + self.frame_size) >> 0
+            self.__timestamp = (self.__timestamp + samples_in_chunk) & 0xFFFFFFFF
             # Timestamp should increment by number of samples, not bytes
             # samples_sent += len(chunk) // self.bytes_per_sample
             # self.__timestamp = (self.__timestamp + samples_sent) & 0xFFFFFFFF
-            audio = audio[self.frame_size:]
+            audio = audio[self.samples_per_packet:]
             chunk_count += 1
             total_samples_sent += samples_in_chunk
             

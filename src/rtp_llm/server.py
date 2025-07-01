@@ -98,6 +98,8 @@ class Server:
             if self.speaking:
                 return
             self.speaking = True
+            # Clear buffer immediately to prevent audio contamination
+            self.audio_buffer.clear()
             wav_audio = await pcm2wav(audio, sample_rate=self.adapter.sample_rate)
             logger.info(f"Converted to wav, {len(wav_audio)} bytes")
             response = await self.agent.stt(
@@ -107,10 +109,11 @@ class Server:
             )
             logger.info(f"STT response: {response}")
             await self.speak(response)
-            self.audio_buffer.clear()
         except Exception as e:
             logger.error(f"Error answering audio: {e}")
             return None
+        finally:
+            self.speaking = False
     
 
     async def speak(self, text: str):
@@ -140,7 +143,6 @@ class Server:
                                              target_sample_rate=self.adapter.sample_rate)
 
             await self.adapter.send_audio(chunk)
-            logger.info(f"Sent {len(chunk)} bytes")
             await self.audio_logger.log_ai(chunk)
         
         logger.info(f"Finished speaking: {chunk_count} chunks, total {total_bytes} bytes")
