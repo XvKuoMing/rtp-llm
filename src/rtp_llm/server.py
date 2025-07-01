@@ -76,12 +76,12 @@ class Server:
                     continue
                 last_second_of_audio = buffer_audio[-last_second:] # cutting last second of audio
                 vad_state = await self.vad.detect(last_second_of_audio)
-                # if (time.time() - self.last_response_time) > self.min_wait_time and \
-                #     await self.flow_manager.run_agent(vad_state):
-                #     logger.info("VAD: user speech ended, answering")
-                #     # await self.answer(buffer_audio)
-                #     asyncio.create_task(self.answer(buffer_audio))
-                #     await self.flow_manager.reset()
+                if (time.time() - self.last_response_time) > self.min_wait_time and \
+                    await self.flow_manager.run_agent(vad_state):
+                    logger.info("VAD: user speech ended, answering")
+                    # await self.answer(buffer_audio)
+                    asyncio.create_task(self.answer(buffer_audio))
+                    await self.flow_manager.reset()
                 if (time.time() - self.last_response_time) > self.max_wait_time:
                     logger.info("VAD: max wait time reached, answering")
                     # await self.answer(buffer_audio)
