@@ -17,7 +17,7 @@ from rtp_llm.history import ChatHistoryLimiter
 from rtp_llm.vad import WebRTCVAD
 from rtp_llm.providers import OpenAIProvider, AstLLmProvider, GeminiSTTProvider
 from rtp_llm.agents import VoiceAgent
-from rtp_llm.audio_logger import AudioLogger
+# from rtp_llm.audio_logger import AudioLogger
 from dotenv import load_dotenv
 
 # Configure logging
@@ -470,12 +470,8 @@ def main():
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
     parser.add_argument("--system-prompt", help="System prompt or path to file")
-    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     
     args = parser.parse_args()
-    
-    # Set log level
-    logging.getLogger().setLevel(getattr(logging, args.log_level))
     
     # Load system prompt if provided
     if args.system_prompt:

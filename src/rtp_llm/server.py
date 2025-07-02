@@ -50,6 +50,7 @@ class Server:
         # state management
         self.max_wait_time = max_wait_time
         self.last_response_time = time.time()
+        self.processed_seconds = 0
         self.speaking = False
         self.answer_lock = asyncio.Lock()
     
@@ -61,7 +62,6 @@ class Server:
         # Handle first message outside the main loop
         if first_message is not None and self.adapter.peer_is_configured:
             logger.info(f"Speaking first message: {first_message}")
-            # await self.speak(first_message)
             asyncio.create_task(self.speak(first_message))
             first_message = None
 
@@ -81,27 +81,32 @@ class Server:
 
                 if first_message and self.adapter.peer_is_configured:
                     logger.info(f"Speaking first message: {first_message}")
-                    # await self.speak(first_message)
                     asyncio.create_task(self.speak(first_message))
                     first_message = None
                     continue
 
                 await self.audio_buffer.add_frame(audio)
                 await self.audio_logger.log_user(audio)
+
                 buffer_audio = await self.audio_buffer.get_frames()
                 last_second = self.adapter.sample_rate * 2 # 2 bytes per sample for pcm16
-                if len(buffer_audio) < last_second:
+                if len(buffer_audio) < last_second + self.processed_seconds: # ensure to not check the same second multiple times
                     continue
                 if self.speaking:
                     continue
                 last_second_of_audio = buffer_audio[-last_second:] # cutting last second of audio
+                self.processed_seconds += last_second
+
                 vad_state = await self.vad.detect(last_second_of_audio)
+
                 max_time_reached = self.max_wait_time > 0 and (time.time() - self.last_response_time) > self.max_wait_time
                 need_run_agent = await self.flow_manager.run_agent(vad_state)
+
                 if max_time_reached or need_run_agent:
                     logger.info(f"Answering to the user; max_time_reached: {max_time_reached}, need_run_agent: {need_run_agent}")
                     asyncio.create_task(self.answer(buffer_audio))
                     await self.flow_manager.reset()
+                    self.audio_buffer.clear()
                 else:
                     pass # later, we will implement silence sending
     
@@ -111,8 +116,6 @@ class Server:
         """
         try:
             self.speaking = True
-            # Clear buffer immediately to prevent audio contamination
-            self.audio_buffer.clear()
             wav_audio = await pcm2wav(audio, sample_rate=self.adapter.sample_rate)
             logger.info(f"Converted to wav, {len(wav_audio)} bytes")
             response = await self.agent.stt(

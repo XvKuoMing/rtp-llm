@@ -258,7 +258,7 @@ class RTPAdapter(Adapter):
             chunk_count += 1
             total_samples_sent += samples_in_chunk
             
-        logger.info(f"Sent {chunk_count} chunks, {total_samples_sent} samples, duration: {total_samples_sent/self.sample_rate:.2f}s")
+        logger.debug(f"Sent {chunk_count} chunks, {total_samples_sent} samples, duration: {total_samples_sent/self.sample_rate:.2f}s")
 
     async def receive_audio(self) -> Optional[bytes]:
         try:
