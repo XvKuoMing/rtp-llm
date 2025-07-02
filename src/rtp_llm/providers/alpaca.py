@@ -130,6 +130,7 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
     async def tts(self, 
                   text: str, 
                   response_format: str = "pcm", 
+                  response_sample_rate: int = 24_000,
                   gen_config: Optional[Dict[str, Any]] = None) -> bytes:
         if not self.tts_client:
             raise ValueError("TTS client is not set")
@@ -146,6 +147,7 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
     async def tts_stream(self, 
                          text: str, 
                          response_format: str = "pcm", 
+                         response_sample_rate: int = 24_000,
                          gen_config: Optional[Dict[str, Any]] = None) -> AsyncGenerator[bytes, None]:
         if not self.tts_client:
             raise ValueError("TTS client is not set")

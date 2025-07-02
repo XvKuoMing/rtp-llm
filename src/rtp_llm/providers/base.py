@@ -23,10 +23,13 @@ class BaseTTSProvider(ABC):
     async def tts(self, 
                   text: str, 
                   response_format: str = "pcm",
+                  response_sample_rate: int = 24_000,
                   gen_config: Optional[Dict[str, Any]] = None,
                   ) -> bytes:
         """
         Generate audio from text.
+        TTS_RESPONSE_FORMATS = ["pcm", "ulaw", "alaw", "opus"]
+        TTS_RESPONSE_SAMPLE_RATES = [8000, 16000, 24000, 48000]
         """
         pass
 
@@ -34,6 +37,7 @@ class BaseTTSProvider(ABC):
     async def tts_stream(self, 
                          text: str, 
                          response_format: str = "pcm",
+                         response_sample_rate: int = 24_000,
                          gen_config: Optional[Dict[str, Any]] = None,
                          ) -> AsyncGenerator[bytes, None]:
         """
