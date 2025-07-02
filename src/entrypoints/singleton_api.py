@@ -396,7 +396,7 @@ async def health_check():
         message="API is healthy",
         status="success",
         timestamp=datetime.now(),
-        data={"api_version": "1.0.0"}
+        data={"ping": "pong"}
     )
 
 @app.get("/status")

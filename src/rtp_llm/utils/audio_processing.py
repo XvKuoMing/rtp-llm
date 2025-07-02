@@ -37,13 +37,13 @@ async def pcm2wav(pcm16: bytes, sample_rate: int = 8000) -> bytes:
 async def pcm2ulaw(pcm16: bytes) -> bytes:
     """convert pcm16 to ulaw"""
     ulaw_data = audioop.lin2ulaw(pcm16, 2)
-    logger.info(f"Converted {len(pcm16)} PCM16 bytes to {len(ulaw_data)} ulaw bytes")
+    logger.debug(f"Converted {len(pcm16)} PCM16 bytes to {len(ulaw_data)} ulaw bytes")
     return ulaw_data
 
 async def pcm2alaw(pcm16: bytes) -> bytes:
     """convert pcm16 to alaw"""
     alaw_data = audioop.lin2alaw(pcm16, 2)
-    logger.info(f"Converted {len(pcm16)} PCM16 bytes to {len(alaw_data)} alaw bytes")
+    logger.debug(f"Converted {len(pcm16)} PCM16 bytes to {len(alaw_data)} alaw bytes")
     return alaw_data
 
 
@@ -66,17 +66,17 @@ class StreamingResample:
     async def resample_pcm16(self, pcm16: bytes):
         
         if len(pcm16) % 2 != 0:
-            logger.info(f"Input pcm16 length is not even ({len(pcm16)}), appending to deque")
+            logger.debug(f"Input pcm16 length is not even ({len(pcm16)}), appending to deque")
             self.buffer += pcm16[-1:]
             pcm16 = pcm16[:-1]
         
         if self.buffer:
-            logger.info(f"Joining buffer with pcm16, buffer length: {len(self.buffer)}")
+            logger.debug(f"Joining buffer with pcm16, buffer length: {len(self.buffer)}")
             pcm16 = self.buffer + pcm16
             self.buffer = b''
         
         if not pcm16:
-            logger.info("No valid audio data, returning empty bytes")
+            logger.debug("No valid audio data, returning empty bytes")
             return b''
 
         pcm16_array = np.frombuffer(pcm16, dtype=np.int16)

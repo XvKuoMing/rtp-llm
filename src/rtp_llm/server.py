@@ -90,11 +90,11 @@ class Server:
 
                 buffer_audio = await self.audio_buffer.get_frames()
                 last_second = self.adapter.sample_rate * 2 # 2 bytes per sample for pcm16
-                if len(buffer_audio) < last_second + self.processed_seconds: # ensure to not check the same second multiple times
+                if len(buffer_audio) < self.processed_seconds + last_second: # ensure to not check the same second multiple times
                     continue
                 if self.speaking:
                     continue
-                last_second_of_audio = buffer_audio[-last_second:] # cutting last second of audio
+                last_second_of_audio = buffer_audio[self.processed_seconds:self.processed_seconds + last_second] # cutting last second of audio
                 self.processed_seconds += last_second
 
                 vad_state = await self.vad.detect(last_second_of_audio)
