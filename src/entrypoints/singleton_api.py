@@ -399,35 +399,16 @@ async def health_check():
         data={"api_version": "1.0.0"}
     )
 
-@app.get("/status", response_model=APIResponse)
+@app.get("/status")
 async def get_server_status():
     """Get the current status of the RTP server"""
     try:
         server = SingletonServer.get_instance()
         
         if not server:
-            return APIResponse(
-                message="No server instance found",
-                status="info",
-                timestamp=datetime.now(),
-                data={
-                    "server_exists": False,
-                    "is_running": False,
-                    "channel_id": None
-                }
-            )
+            return {"is_running": False}
         
-        return APIResponse(
-            message="Server status retrieved successfully",
-            status="success",
-            timestamp=datetime.now(),
-            data={
-                "server_exists": True,
-                "is_running": server.is_running,
-                "channel_id": server.channel_id,
-                "task_status": "running" if server.is_running else "stopped"
-            }
-        )
+        return {"is_running": server.is_running}
         
     except Exception as e:
         logger.error(f"Error getting server status: {e}")
@@ -489,7 +470,7 @@ def main():
     
     logger.info(f"Starting API server on {args.host}:{args.port}")
     
-    uvicorn.run(app, host=args.host, port=args.port, log_level=args.log_level.lower())
+    uvicorn.run(app, host=args.host, port=args.port)
 
 if __name__ == "__main__":
     main() 
