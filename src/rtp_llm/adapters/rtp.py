@@ -203,13 +203,13 @@ class RTPAdapter(Adapter):
         # Convert to target codec if necessary
         if self.target_codec != AudioCodec.PCM:
             if self.target_codec == AudioCodec.ULAW:
-                logger.info("Converting to ulaw")
+                # logger.info("Converting to ulaw")
                 audio = await pcm2ulaw(audio)
             elif self.target_codec == AudioCodec.ALAW:
-                logger.info("Converting to alaw")
+                # logger.info("Converting to alaw")
                 audio = await pcm2alaw(audio)
             elif self.target_codec == AudioCodec.OPUS:
-                logger.info("Converting to opus")
+                # logger.info("Converting to opus")
                 audio = await pcm2opus(audio)
             else:
                 logger.warning("Keeping audio as pcm, since codec has not been detected")
@@ -263,7 +263,7 @@ class RTPAdapter(Adapter):
                 
                 await asyncio.sleep(sleep_duration)
                 
-                logger.info(f"Sent RTP packet: seq={rtp_packet.header.sequence_number}, ts={rtp_packet.header.timestamp}, len={len(chunk)} bytes, samples={samples_in_chunk}, to {self.peer_ip}:{self.peer_port}")
+                # logger.info(f"Sent RTP packet: seq={rtp_packet.header.sequence_number}, ts={rtp_packet.header.timestamp}, len={len(chunk)} bytes, samples={samples_in_chunk}, to {self.peer_ip}:{self.peer_port}")
             except Exception as e:
                 logger.error(f"Error sending RTP packet: {e}")
                 break

@@ -3,8 +3,9 @@ import numpy as np
 import io
 import wave
 import logging
-import librosa
 import audioop
+from math import gcd
+from scipy.signal import resample_poly
 
 
 logger = logging.getLogger(__name__)
@@ -21,26 +22,7 @@ async def pcm2wav(pcm16: bytes, sample_rate: int = 8000) -> bytes:
     """convert pcm16 to wav"""
     # First ensure audio quality is good
     pcm16_array = np.frombuffer(pcm16, dtype=np.int16)
-    
-    # # Basic noise gate with better threshold
-    # rms = np.sqrt(np.mean(pcm16_array.astype(np.float32)**2))
-    # # logger.debug(f"Audio RMS level: {rms}")
-    
-    # # If audio is too quiet, don't process
-    # if rms < 100:  # Increased threshold to filter out more noise
-    #     logger.warning(f"Audio too quiet (RMS: {rms}), returning empty response")
-    #     return None
-        
-    # # Check for clipping or distortion
-    # peak_level = np.max(np.abs(pcm16_array))
-    # if peak_level > 30000:  # Close to 16-bit limit (32767)
-    #     logger.warning(f"Audio may be clipped, peak level: {peak_level}")
-    
-    # # Check for potential noise patterns
-    # if np.std(pcm16_array.astype(np.float32)) < 10:
-    #     logger.warning(f"Low audio variation detected, possible noise or silent audio")
-    #     return None
-            
+                
     # Create WAV from processed audio - do this as efficiently as possible
     buf = io.BytesIO()
     with wave.open(buf, 'wb') as wav:
@@ -71,53 +53,48 @@ async def pcm2opus(pcm16: bytes, sample_rate: int = 8000) -> bytes:
     return encoder.encode(pcm16, frame_size=sample_rate//50)
 
 
-async def resample_pcm16(pcm16: bytes, original_sample_rate: int = 24000, target_sample_rate: int = 8000) -> bytes:
-    """resample pcm16 to target sample rate, using librosa with high quality settings"""
-    if len(pcm16) % 2 != 0:
-        logger.warning(f"Input pcm16 length is not even ({len(pcm16)}), truncating to even length")
-        # Ensure input has complete 16-bit samples
-        # pcm16 += b'\x00'
-        pcm16 = pcm16[:-1]
 
-    pcm16_array = np.frombuffer(pcm16, dtype=np.int16)
-    
-    # Convert to float32 for librosa (normalize to [-1, 1] range)
-    float_array = pcm16_array.astype(np.float32) / 32768.0
-    
-    # Use higher quality resampling parameters
-    resampled_float = librosa.resample(
-        float_array, 
-        orig_sr=original_sample_rate, 
-        target_sr=target_sample_rate,
-        res_type='kaiser_best',  # Higher quality resampling
-        fix=True,               # Center the filter
-        scale=False             # Don't scale to preserve energy
-    )
-    
-    # Ensure we have an even number of samples for PCM16 (2 bytes per sample)
-    if len(resampled_float) % 2 == 1:
-        logger.warning(f"Resampled output has odd number of samples ({len(resampled_float)}), truncating by 1 sample")
-        # resampled_float = resampled_float[:-1]
-        resampled_float += 0.0
-    
-    # Apply gentle normalization to prevent clipping while preserving dynamics
-    peak = np.max(np.abs(resampled_float))
-    if peak > 0.95:
-        resampled_float = resampled_float * (0.95 / peak)
-    
-    # Convert back to int16 with proper clipping
-    resampled_int16 = (resampled_float * 32767.0).clip(-32767, 32767).astype(np.int16)
+class StreamingResample:
 
-    if len(resampled_int16) % 2 == 1:
-        logger.warning(f"Converted to PCM16: Resampled output has odd number of samples ({len(resampled_int16)}), truncating by 1 sample")
-        resampled_int16 += 0
+    def __init__(self, original_sample_rate: int, target_sample_rate: int):
+        g = gcd(original_sample_rate, target_sample_rate)
+        self.up = target_sample_rate // g
+        self.down = original_sample_rate // g
+        # self.zi = None # not used
+        self.buffer = b''
     
-    logger.info(f"Resampled from {original_sample_rate}Hz to {target_sample_rate}Hz, "
-                f"samples: {len(pcm16_array)} -> {len(resampled_int16)}, "
-                f"bytes: {len(pcm16)} -> {len(resampled_int16.tobytes())}, "
-                f"peak level: {peak:.3f}")
-    
-    return resampled_int16.tobytes()
+    async def resample_pcm16(self, pcm16: bytes):
+        
+        if len(pcm16) % 2 != 0:
+            logger.info(f"Input pcm16 length is not even ({len(pcm16)}), appending to deque")
+            self.buffer += pcm16[-1:]
+            pcm16 = pcm16[:-1]
+        
+        if self.buffer:
+            logger.info(f"Joining buffer with pcm16, buffer length: {len(self.buffer)}")
+            pcm16 = self.buffer + pcm16
+            self.buffer = b''
+        
+        if not pcm16:
+            logger.info("No valid audio data, returning empty bytes")
+            return b''
+
+        pcm16_array = np.frombuffer(pcm16, dtype=np.int16)
+        pcm16_array = pcm16_array.astype(np.float32) / 32768.0 # convert and normalize to [-1, 1]
+        out = resample_poly(
+            pcm16_array, 
+            self.up, 
+            self.down, 
+            padtype='line', 
+            axis=0, 
+            window=('kaiser', 14)
+            )
+        if isinstance(out, np.ndarray):
+            out_i16 = (out.clip(-1, 1) * 32767).astype(np.int16) # convert back to int16
+            return out_i16.tobytes()
+        else:
+            logger.warning("Resampled output is not a numpy array, returning empty bytes")
+            return b''
 
 
 async def ulaw2pcm(ulaw: bytes) -> bytes:

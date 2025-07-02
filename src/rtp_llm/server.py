@@ -9,7 +9,7 @@ from .buffer import BaseAudioBuffer
 from .flow import BaseChatFlowManager
 from .agents import VoiceAgent
 from .vad import BaseVAD
-from .utils.audio_processing import pcm2wav, resample_pcm16
+from .utils.audio_processing import pcm2wav, StreamingResample
 from .audio_logger import AudioLogger
 from typing import Optional
 import random
@@ -131,20 +131,22 @@ class Server:
 
         chunk_count = 0
         total_bytes = 0
+
+        resampler = StreamingResample(
+            original_sample_rate=TTS_SAMPLE_RATE, 
+            target_sample_rate=self.adapter.sample_rate)
+        
         async for chunk in speech:
             chunk_count += 1
             total_bytes += len(chunk)
 
-
             if TTS_SAMPLE_RATE != self.adapter.sample_rate:
                 logger.info(f"Resampling audio from {TTS_SAMPLE_RATE}Hz to {self.adapter.sample_rate}Hz")
-                chunk = await resample_pcm16(chunk, 
-                                             original_sample_rate=TTS_SAMPLE_RATE, 
-                                             target_sample_rate=self.adapter.sample_rate)
+                chunk = await resampler.resample_pcm16(chunk)
 
             await self.adapter.send_audio(chunk)
             await self.audio_logger.log_ai(chunk)
-        
+
         logger.info(f"Finished speaking: {chunk_count} chunks, total {total_bytes} bytes")
         await self.audio_logger.save()
         self.last_response_time = time.time()
