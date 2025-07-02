@@ -105,6 +105,7 @@ class VoiceAgent:
                    text: str,
                    stream: bool = False, 
                    response_format: str = "pcm",
+                   response_sample_rate: int = 24_000,
                    gen_config: Optional[Dict[str, Any]] = None,
                    ) -> Optional[bytes | AsyncGenerator[bytes, None]]:
         """
@@ -113,9 +114,17 @@ class VoiceAgent:
         """
         gen_config = gen_config or self.__tts_gen_config
         if stream:
-            return self.tts_provider.tts_stream(text=text, response_format=response_format, gen_config=gen_config)
+            return self.tts_provider.tts_stream(
+                text=text, 
+                response_format=response_format, 
+                response_sample_rate=response_sample_rate, 
+                gen_config=gen_config)
         else:
-            return await self.tts_provider.tts(text=text, response_format=response_format, gen_config=gen_config)
+            return await self.tts_provider.tts(
+                text=text, 
+                response_format=response_format, 
+                response_sample_rate=response_sample_rate, 
+                gen_config=gen_config)
     
     async def _stt_backup(self, audio: bytes, 
                           stream: bool = False, 
@@ -142,6 +151,7 @@ class VoiceAgent:
                           text: str, 
                           stream: bool = False, 
                           response_format: str = "pcm",
+                          response_sample_rate: int = 24_000,
                           gen_config: Optional[Dict[str, Any]] = None,
                           ) -> Optional[bytes | AsyncGenerator[bytes, None]]:
         """
@@ -157,6 +167,7 @@ class VoiceAgent:
                 return await self._tts(text=text, 
                                        stream=stream, 
                                        response_format=response_format, 
+                                       response_sample_rate=response_sample_rate,
                                        gen_config=gen_config)
             except Exception as e:
                 logger.warning(f"Backup TTS provider {backup_provider.__class__.__name__} failed: {e}")
@@ -205,9 +216,10 @@ class VoiceAgent:
     
 
     async def tts(self, 
-                  text: str, 
-                  stream: bool = False, 
+                  text: str,  
                   response_format: str = "pcm",
+                  response_sample_rate: int = 24_000,
+                  stream: bool = False,
                   gen_config: Optional[Dict[str, Any]] = None,
                   ) -> Optional[bytes | AsyncGenerator[bytes, None]]:
         """
@@ -219,5 +231,6 @@ class VoiceAgent:
                                             text=text, 
                                             stream=stream,
                                             response_format=response_format,
+                                            response_sample_rate=response_sample_rate,
                                             gen_config=gen_config)
     

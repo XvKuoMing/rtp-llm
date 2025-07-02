@@ -30,17 +30,25 @@ class Server:
                  flow_manager: BaseChatFlowManager,
                  vad: BaseVAD,
                  agent: VoiceAgent,
-                 max_wait_time: int = 7,
-                 min_wait_time: int = 2
+                 max_wait_time: int = 7, # <= 0 means no max wait time
+                 uid: Optional[int] = None,
                  ):
+        
+        # components
         self.adapter = adapter
         self.audio_buffer = audio_buffer
         self.flow_manager = flow_manager
         self.vad = vad
         self.agent = agent
-        self.audio_logger = AudioLogger(uid=random.randint(0, 1000000), sample_rate=adapter.sample_rate)
+
+        # logging info
+        self.uid = uid or random.randint(0, 1000000)
+        self.audio_logger = AudioLogger(
+            uid=self.uid, 
+            sample_rate=adapter.sample_rate)
+        
+        # state management
         self.max_wait_time = max_wait_time
-        self.min_wait_time = min_wait_time
         self.last_response_time = time.time()
         self.speaking = False
         self.answer_lock = asyncio.Lock()
@@ -51,9 +59,11 @@ class Server:
         run the server
         """
         # Handle first message outside the main loop
-        # if first_message is not None:
-        #     logger.info(f"Speaking first message: {first_message}")
-        #     await self.speak(first_message)
+        if first_message is not None and self.adapter.peer_is_configured:
+            logger.info(f"Speaking first message: {first_message}")
+            # await self.speak(first_message)
+            asyncio.create_task(self.speak(first_message))
+            first_message = None
 
         while True:
             audio = await self.adapter.receive_audio()
@@ -64,8 +74,18 @@ class Server:
 
             async with self.answer_lock:
                 if self.speaking:
-                    # discarding user audio while speaking
+                    # saving user audio while speaking ## NOTE: as for now simply discard
+                    # await self.audio_buffer.add_frame(audio)
+                    # await self.audio_logger.log_user(audio)
                     continue
+
+                if first_message and self.adapter.peer_is_configured:
+                    logger.info(f"Speaking first message: {first_message}")
+                    # await self.speak(first_message)
+                    asyncio.create_task(self.speak(first_message))
+                    first_message = None
+                    continue
+
                 await self.audio_buffer.add_frame(audio)
                 await self.audio_logger.log_user(audio)
                 buffer_audio = await self.audio_buffer.get_frames()
@@ -76,15 +96,10 @@ class Server:
                     continue
                 last_second_of_audio = buffer_audio[-last_second:] # cutting last second of audio
                 vad_state = await self.vad.detect(last_second_of_audio)
-                if (time.time() - self.last_response_time) > self.min_wait_time and \
-                    await self.flow_manager.run_agent(vad_state):
-                    logger.info("VAD: user speech ended, answering")
-                    # await self.answer(buffer_audio)
-                    asyncio.create_task(self.answer(buffer_audio))
-                    await self.flow_manager.reset()
-                if (time.time() - self.last_response_time) > self.max_wait_time:
-                    logger.info("VAD: max wait time reached, answering")
-                    # await self.answer(buffer_audio)
+                max_time_reached = self.max_wait_time > 0 and (time.time() - self.last_response_time) > self.max_wait_time
+                need_run_agent = await self.flow_manager.run_agent(vad_state)
+                if max_time_reached or need_run_agent:
+                    logger.info(f"Answering to the user; max_time_reached: {max_time_reached}, need_run_agent: {need_run_agent}")
                     asyncio.create_task(self.answer(buffer_audio))
                     await self.flow_manager.reset()
                 else:
@@ -95,8 +110,6 @@ class Server:
         answer the audio
         """
         try:
-            if self.speaking:
-                return
             self.speaking = True
             # Clear buffer immediately to prevent audio contamination
             self.audio_buffer.clear()
@@ -120,12 +133,12 @@ class Server:
         """
         speak the text
         """
-        if not self.speaking:
-            self.speaking = True
+        self.speaking = True
         speech = await self.agent.tts(
             text=text,
             stream=True,
-            response_format=TTS_RESPONSE_FORMAT
+            response_format=TTS_RESPONSE_FORMAT,
+            response_sample_rate=TTS_SAMPLE_RATE,
         )
         logger.info(f"Generated speech for: {text}" if speech else "No speech generated")
 
@@ -141,7 +154,7 @@ class Server:
             total_bytes += len(chunk)
 
             if TTS_SAMPLE_RATE != self.adapter.sample_rate:
-                logger.info(f"Resampling audio from {TTS_SAMPLE_RATE}Hz to {self.adapter.sample_rate}Hz")
+                logger.debug(f"Resampling audio from {TTS_SAMPLE_RATE}Hz to {self.adapter.sample_rate}Hz")
                 chunk = await resampler.resample_pcm16(chunk)
 
             await self.adapter.send_audio(chunk)
