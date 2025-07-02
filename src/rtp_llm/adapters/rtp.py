@@ -5,7 +5,6 @@ import time
 
 from .base import Adapter
 from ..utils.audio_processing import (
-    resample_pcm16, 
     ulaw2pcm, 
     alaw2pcm, 
     opus2pcm,
