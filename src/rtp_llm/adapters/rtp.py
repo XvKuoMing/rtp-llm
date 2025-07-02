@@ -202,13 +202,10 @@ class RTPAdapter(Adapter):
         # Convert to target codec if necessary
         if self.target_codec != AudioCodec.PCM:
             if self.target_codec == AudioCodec.ULAW:
-                # logger.info("Converting to ulaw")
                 audio = await pcm2ulaw(audio)
             elif self.target_codec == AudioCodec.ALAW:
-                # logger.info("Converting to alaw")
                 audio = await pcm2alaw(audio)
             elif self.target_codec == AudioCodec.OPUS:
-                # logger.info("Converting to opus")
                 audio = await pcm2opus(audio)
             else:
                 logger.warning("Keeping audio as pcm, since codec has not been detected")
@@ -218,19 +215,10 @@ class RTPAdapter(Adapter):
         chunk_count = 0
         
         while len(audio) > 0:
-            # chunk = audio[:RTP_CHUNK_SIZE]
             chunk = audio[:self.bytes_per_packet]
             
             # Calculate actual samples in this chunk
             samples_in_chunk = len(chunk) // self.bytes_per_sample
-            
-            # MASSIVE LOGGING: Chunk details
-            # logger.info(f"📦 === PACKET {chunk_count + 1} ===")
-            # logger.info(f"📏 Chunk size: {len(chunk)} bytes (expected: {self.bytes_per_packet})")
-            # logger.info(f"📊 Samples in chunk: {samples_in_chunk} (expected: {self.samples_per_packet})")
-            # logger.info(f"🆔 Sequence: {self.__sequence_number}")
-            # logger.info(f"⏰ Timestamp: {self.__timestamp}")
-            # logger.info(f"🏷️ Marker bit: {first_chunk}")
             
             if len(chunk) != self.bytes_per_packet and len(audio) > self.bytes_per_packet:
                 logger.error(f"🚨 UNEXPECTED CHUNK SIZE! Got {len(chunk)}, expected {self.bytes_per_packet}")
@@ -257,19 +245,14 @@ class RTPAdapter(Adapter):
                 # Use a more precise timing based on actual samples
                 chunk_duration = samples_in_chunk / self.sample_rate
                 sleep_duration = min(chunk_duration, RTP_INTER_PACKET_DELAY)
-                # logger.info(f"⏱️ Chunk duration: {chunk_duration*1000:.2f}ms")
-                # logger.info(f"⏱️ Sleep duration: {sleep_duration*1000:.2f}ms")
                 
                 await asyncio.sleep(sleep_duration)
-                
-                # logger.info(f"Sent RTP packet: seq={rtp_packet.header.sequence_number}, ts={rtp_packet.header.timestamp}, len={len(chunk)} bytes, samples={samples_in_chunk}, to {self.peer_ip}:{self.peer_port}")
             except Exception as e:
                 logger.error(f"Error sending RTP packet: {e}")
                 break
 
-            # Update sequence number and timestamp correctly
+            # Update sequence number and timestamp
             self.__sequence_number = (self.__sequence_number + 1) % 65536
-            # FIXED: Timestamp should increment by number of samples, not bytes
             self.__timestamp = (self.__timestamp + samples_in_chunk) & 0xFFFFFFFF
             audio = audio[self.bytes_per_packet:]
             chunk_count += 1

@@ -22,6 +22,13 @@ class Adapter:
         self.sample_rate = sample_rate
         self.target_codec = target_codec
 
+    @property
+    def peer_is_configured(self) -> bool:
+        """
+        check if the peer is configured
+        """
+        return self.peer_ip is not None and self.peer_port is not None
+
     @abstractmethod
     async def send_audio(self, audio_pcm16: bytes) -> None:
         """
