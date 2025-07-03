@@ -23,6 +23,14 @@ class BaseChatHistory(ABC):
         must return messages in the history
         """
         ...
+    
+
+    @abstractmethod
+    def clear(self) -> None:
+        """
+        must clear the history
+        """
+        ...
 
 
 

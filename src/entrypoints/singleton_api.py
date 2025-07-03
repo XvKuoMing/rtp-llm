@@ -138,13 +138,14 @@ def initialize_providers():
         logger.warning("No TTS backup provider found")
 
 # Initialize voice agent
-def create_voice_agent():
-    
+def create_voice_agent(system_prompt: Optional[str] = None, chat_limit: int = 10):
+    if system_prompt:
+        stt_provider.system_prompt = system_prompt
     try:
         voice_agent = VoiceAgent(
             stt_provider=stt_provider,
             tts_provider=tts_provider,
-            history_manager=ChatHistoryLimiter(),
+            history_manager=ChatHistoryLimiter(limit=chat_limit),
             backup_stt_providers=stt_backup_provider,
             backup_tts_providers=tts_backup_provider
         )
@@ -169,18 +170,16 @@ class SingletonServer:
         SingletonServer.__host_ip = host_ip
         SingletonServer.__host_port = host_port
 
-    def __new__(cls, channel_id: str | int, **kwargs):
+    def __new__(cls, **kwargs):
         if cls._instance is None:
-            logger.info(f"Creating new SingletonServer instance for channel_id: {channel_id}")
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, channel_id: str | int, **kwargs):
+    def __init__(self, **kwargs):
         if hasattr(self, '_initialized'):
             return
         
         self.task = None
-        self.channel_id = None
         self._initialized = False
         self.server = None
         
@@ -209,9 +208,7 @@ class SingletonServer:
             )
             
             self.task = None
-            self.channel_id = channel_id
             self._initialized = True
-            logger.info(f"SingletonServer initialized for channel_id: {channel_id}")
         except Exception as e:
             logger.error(f"Failed to initialize SingletonServer: {e}")
             raise
@@ -219,15 +216,23 @@ class SingletonServer:
     @property
     def is_running(self):
         return self.task is not None and not self.task.done()
+    
+    def set_system_prompt(self, system_prompt: str):
+        self.server.agent.stt_provider.system_prompt = system_prompt
 
-    def start(self, *args, **kwargs):
+    def start(self, peer_ip: Optional[str] = None, peer_port: Optional[int] = None, *args, **kwargs):
         if self.is_running:
             logger.warning("Server is already running")
             return
         
         try:
             logger.info("Starting RTP server...")
-            self.task = asyncio.create_task(self.server.run())
+            self.server.adapter.peer_ip = peer_ip
+            self.server.adapter.peer_port = peer_port
+            self.task = asyncio.create_task(self.server.run(
+                *args,
+                **kwargs
+            ))
             logger.info("RTP server started successfully")
         except Exception as e:
             logger.error(f"Failed to start server: {e}")
@@ -267,7 +272,6 @@ class APIResponse(BaseModel):
     data: dict = {}
 
 class StartRTPRequest(BaseModel):
-    channel_id: str | int
     peer_ip: Optional[str] = None
     peer_port: Optional[int] = None
     tts_response_format: Optional[str] = None
@@ -277,6 +281,8 @@ class StartRTPRequest(BaseModel):
     target_sample_rate: Optional[int] = None
     first_message: Optional[str] = None
     allow_interruptions: bool = False
+    system_prompt: Optional[str] = None
+    uid: Optional[int] = None
 
 # Middleware for logging
 @app.middleware("http")
@@ -301,9 +307,7 @@ async def log_requests(request, call_next):
 @app.post("/start", response_model=APIResponse, status_code=status.HTTP_201_CREATED)
 async def start_rtp_server(request: StartRTPRequest):
     """Start the RTP server with the given configuration"""
-    try:
-        logger.info(f"Received start request for channel_id: {request.channel_id}")
-        
+    try:        
         # Get existing instance or create new one
         server = SingletonServer.get_instance()
         
@@ -313,34 +317,38 @@ async def start_rtp_server(request: StartRTPRequest):
                 message="Server is already running",
                 status="warning",
                 timestamp=datetime.now(),
-                data={"channel_id": server.channel_id, "is_running": True}
+                data={
+                    "peer_ip": server.server.adapter.peer_ip,
+                    "peer_port": server.server.adapter.peer_port,
+                }
             )
         
         # Create new server instance
         server = SingletonServer(
-            channel_id=request.channel_id,
             peer_ip=request.peer_ip,
             peer_port=request.peer_port,
             tts_response_format=request.tts_response_format,
             tts_codec=request.tts_codec,
             target_codec=request.target_codec,
             tts_sample_rate=request.tts_sample_rate,
-            target_sample_rate=request.target_sample_rate,
-            allow_interruptions=request.allow_interruptions
+            target_sample_rate=request.target_sample_rate
         )
         
         # Start the server
-        server.start()
+        server.start(
+            first_message=request.first_message,
+            system_prompt=request.system_prompt,
+            uid=request.uid,
+            allow_interruptions=request.allow_interruptions
+        )
         
-        logger.info(f"RTP server started successfully for channel_id: {request.channel_id}")
+        logger.info(f"RTP server started successfully for channel_id: {request.uid}")
         
         return APIResponse(
             message="RTP server started successfully",
             status="success", 
             timestamp=datetime.now(),
             data={
-                "channel_id": request.channel_id,
-                "is_running": server.is_running,
                 "peer_ip": request.peer_ip,
                 "peer_port": request.peer_port
             }

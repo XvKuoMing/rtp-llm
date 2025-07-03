@@ -47,7 +47,24 @@ class BaseTTSProvider(ABC):
 
 
 class BaseSTTProvider(ABC):
-    
+
+
+    @abstractmethod
+    @property
+    def system_prompt(self) -> str:
+        """
+        Set the system prompt for the STT provider.
+        """
+        pass
+
+    @abstractmethod
+    @system_prompt.setter
+    def system_prompt(self, value: str) -> None:
+        """
+        Set the system prompt for the STT provider.
+        """
+        pass
+
     @abstractmethod
     async def format(self, message: Message) -> Any:
         """given a messsage, format it to the provider's format"""

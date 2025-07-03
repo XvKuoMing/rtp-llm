@@ -45,6 +45,11 @@ class ChatHistoryLimiter(BaseChatHistory):
             self._last_formatted_func = formatter
             self.__last_formatted_messages = [await formatter(msg) for msg in self.__messages]
         return self.__last_formatted_messages
+    
+    def clear(self) -> None:
+        self.__messages = []
+        self.__last_formatted_messages = []
+        self._last_formatted_func = None
 
 
 

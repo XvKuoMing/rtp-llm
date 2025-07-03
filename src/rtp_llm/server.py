@@ -31,7 +31,6 @@ class Server:
                  vad: BaseVAD,
                  agent: VoiceAgent,
                  max_wait_time: int = 7, # <= 0 means no max wait time
-                 uid: Optional[int] = None,
                  ):
         
         # components
@@ -40,26 +39,35 @@ class Server:
         self.flow_manager = flow_manager
         self.vad = vad
         self.agent = agent
-
-        # logging info
-        self.uid = uid or random.randint(0, 1000000)
-        self.audio_logger = AudioLogger(
-            uid=self.uid, 
-            sample_rate=adapter.sample_rate)
         
         # state management
         self.max_wait_time = max_wait_time
-        self.last_response_time = time.time()
+        self.last_response_time = None
         self.processed_seconds = 0
         self.speaking = False
         self.answer_lock = asyncio.Lock()
     
 
-    async def run(self, first_message: Optional[str] = None):
+    async def run(self, 
+                  first_message: Optional[str] = None, 
+                  uid: Optional[int] = None, 
+                  system_prompt: Optional[str] = None,
+                  allow_interruptions: bool = False):
         """
         run the server
         """
         # Handle first message outside the main loop
+        if self.last_response_time is None:
+            self.last_response_time = time.time()
+
+        uid = uid or random.randint(0, 1000000)
+        self.audio_logger = AudioLogger(
+            uid=uid, 
+            sample_rate=self.adapter.sample_rate)
+        
+        if system_prompt:
+            self.agent.stt_provider.system_prompt = system_prompt
+        
         if first_message is not None and self.adapter.peer_is_configured:
             logger.info(f"Speaking first message: {first_message}")
             asyncio.create_task(self.speak(first_message))
@@ -171,6 +179,11 @@ class Server:
 
     def close(self):
         self.adapter.close()
+        self.audio_buffer.clear()
+        self.agent.history_manager.clear()
+        self.speaking = False
+        self.processed_seconds = 0
+        self.last_response_time = None
 
 
 

@@ -24,7 +24,14 @@ class GeminiSTTProvider(BaseSTTProvider):
                 http_options=types.HttpOptions(base_url=self.base_url)
             )
         
+    @property
+    def system_prompt(self) -> str:
+        return self.__system_prompt
     
+    @system_prompt.setter
+    def system_prompt(self, value: str):
+        self.__system_prompt = value
+        
     async def format(self, message: Message) -> Any:
         if message.data_type == "text":
             return types.Content(role=message.role, parts=[types.Part(text=message.content)])
