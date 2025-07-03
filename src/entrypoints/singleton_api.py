@@ -282,7 +282,7 @@ class StartRTPRequest(BaseModel):
     first_message: Optional[str] = None
     allow_interruptions: bool = False
     system_prompt: Optional[str] = None
-    uid: Optional[int] = None
+    uid: Optional[int | str] = None
 
 # Middleware for logging
 @app.middleware("http")

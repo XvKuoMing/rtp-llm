@@ -50,7 +50,7 @@ class Server:
 
     async def run(self, 
                   first_message: Optional[str] = None, 
-                  uid: Optional[int] = None, 
+                  uid: Optional[int | str] = None, 
                   system_prompt: Optional[str] = None,
                   allow_interruptions: bool = False):
         """
