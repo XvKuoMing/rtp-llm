@@ -179,9 +179,11 @@ class Server:
         
 
     def close(self):
+        logger.info("Closing server")
         self.adapter.close()
         self.audio_buffer.clear()
         self.agent.history_manager.clear()
+        self.flow_manager.reset()
         self.speaking = False
         self.processed_seconds = 0
         self.last_response_time = None

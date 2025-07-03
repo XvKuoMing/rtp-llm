@@ -7,6 +7,9 @@ class VoiceState(Enum):
     SPEECH = "speech" # user is speaking 
     
 class BaseVAD(ABC):
+
+    def __init__(self, sample_rate: int):
+        self.sample_rate = sample_rate
     
     @abstractmethod
     async def detect(self, pcm16_frame: bytes) -> VoiceState:
