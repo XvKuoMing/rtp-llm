@@ -321,7 +321,7 @@ async def start(request: StartRTPRequest):
             system_prompt=request.system_prompt,
         )
 
-        server.run(
+        await server.run(
             first_message=request.first_message,
             uid=request.uid,
             system_prompt=request.system_prompt,
