@@ -184,6 +184,7 @@ class SingletonServer(Server):
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
+            return cls._instance
         return cls._instance.post_init(*args, **kwargs)
 
     def __init__(self, 
