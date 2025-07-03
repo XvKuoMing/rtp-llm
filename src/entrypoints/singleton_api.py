@@ -17,7 +17,6 @@ from rtp_llm.history import ChatHistoryLimiter
 from rtp_llm.vad import WebRTCVAD
 from rtp_llm.providers import OpenAIProvider, AstLLmProvider, GeminiSTTProvider
 from rtp_llm.agents import VoiceAgent
-# from rtp_llm.audio_logger import AudioLogger
 from dotenv import load_dotenv
 
 # Configure logging
@@ -203,7 +202,7 @@ class SingletonServer:
                 adapter=adapter,
                 audio_buffer=ArrayBuffer(),
                 flow_manager=CopyFlowManager(),
-                vad=WebRTCVAD(kwargs.get("target_sample_rate", 8000), aggressiveness=3, min_speech_duration_ms=500),
+                vad=WebRTCVAD(kwargs.get("target_sample_rate", 8000), aggressiveness=3, min_speech_duration_ms=100),
                 agent=voice_agent,
             )
             

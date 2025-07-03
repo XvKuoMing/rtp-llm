@@ -74,7 +74,7 @@ class Server:
             first_message = None
 
         while True:
-            audio = await self.adapter.receive_audio()
+            audio = await self.adapter.receive_audio() # produces pcm16
             if audio is None:
                 # Small delay to prevent busy waiting when no audio is received
                 await asyncio.sleep(0.01)  # 10ms delay
@@ -115,6 +115,7 @@ class Server:
                     asyncio.create_task(self.answer(buffer_audio))
                     await self.flow_manager.reset()
                     self.audio_buffer.clear()
+                    self.processed_seconds = 0
                 else:
                     pass # later, we will implement silence sending
     
