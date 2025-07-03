@@ -65,15 +65,17 @@ class StreamingResample:
     
     async def resample_pcm16(self, pcm16: bytes):
         
+
+        if self.buffer:
+            logger.debug(f"Joining buffer with pcm16, buffer length: {len(self.buffer)}")
+            pcm16 = self.buffer + pcm16
+            self.buffer = b''
+
         if len(pcm16) % 2 != 0:
             logger.debug(f"Input pcm16 length is not even ({len(pcm16)}), appending to deque")
             self.buffer += pcm16[-1:]
             pcm16 = pcm16[:-1]
         
-        if self.buffer:
-            logger.debug(f"Joining buffer with pcm16, buffer length: {len(self.buffer)}")
-            pcm16 = self.buffer + pcm16
-            self.buffer = b''
         
         if not pcm16:
             logger.debug("No valid audio data, returning empty bytes")

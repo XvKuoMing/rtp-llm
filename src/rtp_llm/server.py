@@ -163,7 +163,7 @@ class Server:
         async for chunk in speech:
             chunk_count += 1
             total_bytes += len(chunk)
-
+            logger.debug(f"Sending chunk {chunk_count} of {total_bytes} bytes")
             if TTS_SAMPLE_RATE != self.adapter.sample_rate:
                 logger.debug(f"Resampling audio from {TTS_SAMPLE_RATE}Hz to {self.adapter.sample_rate}Hz")
                 chunk = await resampler.resample_pcm16(chunk)
