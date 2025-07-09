@@ -345,7 +345,7 @@ async def start(request: StartRTPRequest):
 
             system_prompt=request.system_prompt,
             tts_pcm_response_format=request.tts_pcm_response_format,
-            tts_pcm_response_sample_rate=request.tts_response_sample_rate,
+            tts_response_sample_rate=request.tts_response_sample_rate,
             tts_gen_config=request.tts_gen_config,
             stt_gen_config=request.stt_gen_config,
         )
