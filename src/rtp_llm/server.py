@@ -107,7 +107,8 @@ class Server:
                 need_run_agent = await self.flow_manager.run_agent(vad_state)
 
                 if max_time_reached or need_run_agent:
-                    await self.audio_logger.beep() # NOTE: this is a hack to make the user aware that the agent started answering
+                    if need_run_agent:
+                        await self.audio_logger.beep() # NOTE: this is a hack to make the user aware that the agent started answering
                     logger.info(f"Answering to the user; max_time_reached: {max_time_reached}, need_run_agent: {need_run_agent}")
                     asyncio.create_task(self.answer(buffer_audio))
                     await self.flow_manager.reset()

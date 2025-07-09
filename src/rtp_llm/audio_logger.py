@@ -2,7 +2,6 @@ import os
 import wave
 import threading
 import math
-import struct
 from dataclasses import dataclass
 from typing import List
 import time
@@ -39,9 +38,9 @@ class AudioLogger:
 
     async def beep(self):
         # Generate actual beep sound for pcm16
-        frequency = 800  # Hz
-        duration = 0.2   # seconds
-        amplitude = 16000  # 16-bit PCM amplitude (half of max to avoid clipping)
+        frequency = 800  # Hz - typical beep frequency
+        duration = 0.3   # seconds
+        amplitude = 0.3  # 30% of max amplitude to avoid being too loud
         
         # Calculate number of samples
         num_samples = int(self.sample_rate * duration)
@@ -49,14 +48,18 @@ class AudioLogger:
         # Generate sine wave samples
         beep_samples = []
         for i in range(num_samples):
-            # Calculate time for this sample
+            # Generate sine wave value (-1 to 1)
             t = i / self.sample_rate
-            # Generate sine wave value
-            sample_value = int(amplitude * math.sin(2 * math.pi * frequency * t))
-            # Convert to 16-bit signed integer and pack as little-endian bytes
-            beep_samples.append(struct.pack('<h', sample_value))
+            sample_value = amplitude * math.sin(2 * math.pi * frequency * t)
+            
+            # Convert to 16-bit signed integer (-32768 to 32767)
+            sample_int16 = int(sample_value * 32767)
+            
+            # Convert to 2 bytes (little endian, signed)
+            sample_bytes = sample_int16.to_bytes(2, byteorder='little', signed=True)
+            beep_samples.append(sample_bytes)
         
-        # Combine all samples into bytes
+        # Combine all samples into one bytes object
         beep_sound = b''.join(beep_samples)
         await self.log(beep_sound, is_user=False)
     
