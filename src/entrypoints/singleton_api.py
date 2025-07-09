@@ -244,7 +244,6 @@ class SingletonServer(Server):
         if SingletonServer._instance:
             SingletonServer._instance.close()
             SingletonServer._instance = None
-            SingletonServer._task = None
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
@@ -329,7 +328,7 @@ class SingletonServer(Server):
         if self._task:
             self._task.cancel()
             self._task = None
-        self.close()
+        super().close()
     
 
 app = fastapi.FastAPI(
