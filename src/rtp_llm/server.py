@@ -137,10 +137,10 @@ class Server:
                     continue
                 if self.speaking:
                     continue
-                last_second_of_audio = buffer_audio[self.processed_seconds:self.processed_seconds + self.vad_interval] # cutting last second of audio
+                last_chunk_audio = buffer_audio[self.processed_seconds:self.processed_seconds + self.vad_interval] # cutting last second of audio
                 self.processed_seconds += self.vad_interval
 
-                vad_state = await self.vad.detect(last_second_of_audio)
+                vad_state = await self.vad.detect(last_chunk_audio)
 
                 max_time_reached = self.max_wait_time > 0 and (time.time() - self.last_response_time) > self.max_wait_time
                 need_run_agent = await self.flow_manager.run_agent(vad_state)
@@ -150,7 +150,7 @@ class Server:
                         await self.audio_logger.beep() # NOTE: this is a hack to make the user aware that the agent started answering
                     logger.info(f"Answering to the user; max_time_reached: {max_time_reached}, need_run_agent: {need_run_agent}")
                     asyncio.create_task(self.answer(buffer_audio))
-                    await self.flow_manager.reset()
+                    self.flow_manager.reset()
                     self.audio_buffer.clear()
                     self.processed_seconds = 0
                 else:

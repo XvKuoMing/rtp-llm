@@ -1,8 +1,5 @@
 from ..vad.base import VoiceState
 from .base import BaseChatFlowManager
-from enum import Enum
-from typing import Optional
-from dataclasses import dataclass
 import logging
 
 logger = logging.getLogger(__name__)
@@ -27,7 +24,7 @@ class CopyFlowManager(BaseChatFlowManager):
         return False
 
     
-    async def reset(self):
+    def reset(self):
         """
         reset the flow manager to the start state
         """

@@ -12,7 +12,7 @@ class BaseChatFlowManager(ABC):
         ...
 
     @abstractmethod
-    async def reset(self):
+    def reset(self):
         """
         reset the flow manager to the start state
         """
