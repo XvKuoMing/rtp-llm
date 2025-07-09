@@ -278,7 +278,7 @@ class SingletonServer(Server):
         if self._task:
             self._task.cancel()
             self._task = None
-        super().close()
+        self.close()
     
 
 app = fastapi.FastAPI(
