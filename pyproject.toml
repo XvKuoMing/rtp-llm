@@ -38,6 +38,7 @@ dependencies = [
     "audioop-lts; python_version>='3.13'",
     "python-dotenv>=1.0.0",
     "opuslib>=3.0.1",
+    "sounddevice>=0.4.6",
 ]
 
 # Optional dependencies (extras)
@@ -48,6 +49,10 @@ tests = [
     "pytest-asyncio>=1.0.0",
     "httpx>=0.28.1",
     "python-dotenv==1.1.0"
+]
+
+local = [
+    "sounddevice>=0.4.6"
 ]
 
 # CLI entry points

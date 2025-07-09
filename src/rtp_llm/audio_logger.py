@@ -1,6 +1,8 @@
 import os
 import wave
 import threading
+import math
+import struct
 from dataclasses import dataclass
 from typing import List
 import time
@@ -34,6 +36,29 @@ class AudioLogger:
     
     async def log_ai(self, pcm16_frames: bytes):
         await self.log(pcm16_frames, is_user=False)
+
+    async def beep(self):
+        # Generate actual beep sound for pcm16
+        frequency = 800  # Hz
+        duration = 0.2   # seconds
+        amplitude = 16000  # 16-bit PCM amplitude (half of max to avoid clipping)
+        
+        # Calculate number of samples
+        num_samples = int(self.sample_rate * duration)
+        
+        # Generate sine wave samples
+        beep_samples = []
+        for i in range(num_samples):
+            # Calculate time for this sample
+            t = i / self.sample_rate
+            # Generate sine wave value
+            sample_value = int(amplitude * math.sin(2 * math.pi * frequency * t))
+            # Convert to 16-bit signed integer and pack as little-endian bytes
+            beep_samples.append(struct.pack('<h', sample_value))
+        
+        # Combine all samples into bytes
+        beep_sound = b''.join(beep_samples)
+        await self.log(beep_sound, is_user=False)
     
     async def save(self):
         """saves current state of the audio logger to a single WAV file containing both user and AI audio"""

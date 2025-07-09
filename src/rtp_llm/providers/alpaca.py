@@ -44,14 +44,24 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
                  stt_model: Optional[str] = "gpt-4o-mini-audio-preview",
                  tts_model: Optional[str] = "gpt-4o-mini-tts",
                  system_prompt: Optional[str] = None,
+                 pcm_response_format: Optional[str] = None,
+                 response_sample_rate: Optional[int] = None,
+                 tts_gen_config: Optional[Dict[str, Any]] = None,
+                 stt_gen_config: Optional[Dict[str, Any]] = None,
                  overwrite_stt_model_api_key: Optional[str] = None,
                  overwrite_stt_model_base_url: Optional[str] = None,
                  overwrite_tts_model_api_key: Optional[str] = None,
                  overwrite_tts_model_base_url: Optional[str] = None,
                  ):
+        """
+        pcm_response_format: The pcm format of the response from the tts_provider; pcm for openai, pcm_24000 for elevenlabs
+        response_sample_rate: The sample rate of the response from the tts_provider.
+        """
         self.stt_model = stt_model
         self.tts_model = tts_model
         self.__system_prompt = system_prompt or "You are a helpful assistant."
+        super(BaseTTSProvider, self).__init__(pcm_response_format, response_sample_rate, tts_gen_config)
+        super(BaseSTTProvider, self).__init__(system_prompt, stt_gen_config)
 
         self.stt_api_key = overwrite_stt_model_api_key or api_key
         self.stt_base_url = overwrite_stt_model_base_url or base_url
@@ -92,16 +102,13 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
             raise ValueError(f"Invalid data type: {message.data_type}")
 
     async def stt(self, 
-                  formatted_data: List[Union[AudioOpenAIMessage, TextOpenAIMessage]],
-                  gen_config: Optional[Dict[str, Any]] = None) -> str:
+                  formatted_data: List[Union[AudioOpenAIMessage, TextOpenAIMessage]]) -> str:
         if not self.stt_client:
             raise ValueError("STT client is not set")
-        if gen_config is None:
-            gen_config = {}
         response = await self.stt_client.chat.completions.create(
             model=self.stt_model,
             messages=[self.system_prompt] + [message.as_json() for message in formatted_data],
-            **gen_config
+            **self.stt_gen_config
         )
         if isinstance(response, ChatCompletion):
             return response.choices[0].message.content
@@ -109,17 +116,14 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
             raise ValueError(f"Unsupported response type: {type(response)}")
 
     async def stt_stream(self, 
-                         formatted_data: List[Union[AudioOpenAIMessage, TextOpenAIMessage]],
-                         gen_config: Optional[Dict[str, Any]] = None) -> AsyncGenerator[str, None]:
+                         formatted_data: List[Union[AudioOpenAIMessage, TextOpenAIMessage]]) -> AsyncGenerator[str, None]:
         if not self.stt_client:
             raise ValueError("STT client is not set")
-        if gen_config is None:
-            gen_config = {}
         response = await self.stt_client.chat.completions.create(
             model=self.stt_model,
             messages=[self.system_prompt] + [message.as_json() for message in formatted_data],
             stream=True,
-            **gen_config
+            **self.stt_gen_config
         )
         async for chunk in response:
             if isinstance(chunk, ChatCompletionChunk):
@@ -127,37 +131,25 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
             else:
                 raise ValueError(f"Unsupported response type: {type(chunk)}")
     
-    async def tts(self, 
-                  text: str, 
-                  response_format: str = "pcm", 
-                  response_sample_rate: int = 24_000,
-                  gen_config: Optional[Dict[str, Any]] = None) -> bytes:
+    async def tts(self, text: str) -> bytes:
         if not self.tts_client:
             raise ValueError("TTS client is not set")
-        if gen_config is None:
-            gen_config = {"voice": "nova"}
         response = await self.tts_client.audio.speech.create(
             model=self.tts_model,
             input=text,
-            response_format=response_format,
-            **gen_config
+            response_format=self.pcm_response_format,
+            **self.tts_gen_config
         )
         return response.content
 
-    async def tts_stream(self, 
-                         text: str, 
-                         response_format: str = "pcm", 
-                         response_sample_rate: int = 24_000,
-                         gen_config: Optional[Dict[str, Any]] = None) -> AsyncGenerator[bytes, None]:
+    async def tts_stream(self, text: str) -> AsyncGenerator[bytes, None]:
         if not self.tts_client:
             raise ValueError("TTS client is not set")
-        if gen_config is None:
-            gen_config = {"voice": "nova"}
         async with self.tts_client.audio.speech.with_streaming_response.create(
             model=self.tts_model,
             input=text,
-            response_format=response_format,
-            **gen_config
+            response_format=self.pcm_response_format,
+            **self.tts_gen_config
         ) as response:
             async for chunk in response.iter_bytes():
                 yield chunk
@@ -206,16 +198,13 @@ class AstLLmProvider(OpenAIProvider):
     
 
     async def stt(self, 
-                  formatted_data: List[TextOpenAIMessage],
-                  gen_config: Optional[Dict[str, Any]] = None) -> str:
+                  formatted_data: List[TextOpenAIMessage]) -> str:
         if not self.stt_model:
             raise ValueError("LLM model is not set")
-        if gen_config is None:
-            gen_config = {}
         response = await self.stt_client.chat.completions.create(
             model=self.stt_model,
             messages=[self.system_prompt] + [message.as_json() for message in formatted_data],
-            **gen_config
+            **self.stt_gen_config
         )
         if isinstance(response, ChatCompletion):
             return response.choices[0].message.content
@@ -223,17 +212,14 @@ class AstLLmProvider(OpenAIProvider):
             raise ValueError(f"Unsupported response type: {type(response)}")
     
     async def stt_stream(self, 
-                         formatted_data: List[TextOpenAIMessage],
-                         gen_config: Optional[Dict[str, Any]] = None) -> AsyncGenerator[str, None]:
+                         formatted_data: List[TextOpenAIMessage]) -> AsyncGenerator[str, None]:
         if not self.stt_model:
             raise ValueError("LLM model is not set")
-        if gen_config is None:
-            gen_config = {}
         response = await self.stt_client.chat.completions.create(
             model=self.stt_model,
             messages=[self.system_prompt] + [message.as_json() for message in formatted_data],
             stream=True,
-            **gen_config
+            **self.stt_gen_config
         )
         async for chunk in response:
             if isinstance(chunk, ChatCompletionChunk):

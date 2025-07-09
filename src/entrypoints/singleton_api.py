@@ -1,9 +1,9 @@
 import os
 import asyncio
 import fastapi
-from fastapi import HTTPException, status
+from fastapi import status
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Dict, Any
 import logging
 import traceback
 import argparse
@@ -224,6 +224,10 @@ class SingletonServer(Server):
                  target_sample_rate: Optional[int] = None, 
                  target_codec: Optional[str] = None,
                  system_prompt: Optional[str] = None,
+                 tts_pcm_response_format: Optional[str] = "pcm",
+                 tts_response_sample_rate: Optional[int] = 24_000,
+                 tts_gen_config: Optional[Dict[str, Any]] = None,
+                 stt_gen_config: Optional[Dict[str, Any]] = None,
                  ):
         
         self.adapter = RTPAdapter(
@@ -239,6 +243,17 @@ class SingletonServer(Server):
         
         if system_prompt:
             self.agent.stt_provider.system_prompt = system_prompt
+        
+        if tts_pcm_response_format:
+            self.agent.tts_provider.pcm_response_format = tts_pcm_response_format
+        if tts_response_sample_rate:
+            self.agent.tts_provider.response_sample_rate = tts_response_sample_rate
+
+        if tts_gen_config:
+            self.agent.tts_provider.tts_gen_config = tts_gen_config
+        if stt_gen_config:
+            self.agent.stt_provider.stt_gen_config = stt_gen_config
+        
         
         return self
 
@@ -282,10 +297,14 @@ class StartRTPRequest(BaseModel):
     peer_port: Optional[int] = None
     target_codec: Optional[str] = None
     target_sample_rate: Optional[int] = None
+    tts_pcm_response_format: Optional[str] = "pcm"
+    tts_response_sample_rate: Optional[int] = 24_000
     first_message: Optional[str] = None
     allow_interruptions: bool = False
     system_prompt: Optional[str] = None
     uid: Optional[int | str] = None
+    tts_gen_config: Optional[Dict[str, Any]] = None
+    stt_gen_config: Optional[Dict[str, Any]] = None
 
 
 class StopRTPRequest(BaseModel):
@@ -325,7 +344,11 @@ async def start(request: StartRTPRequest):
             first_message=request.first_message,
             uid=request.uid,
             system_prompt=request.system_prompt,
-            allow_interruptions=request.allow_interruptions
+            allow_interruptions=request.allow_interruptions,
+            tts_pcm_response_format=request.tts_pcm_response_format,
+            tts_pcm_response_sample_rate=request.tts_response_sample_rate,
+            tts_gen_config=request.tts_gen_config,
+            stt_gen_config=request.stt_gen_config,
         )
         
         return APIResponse(

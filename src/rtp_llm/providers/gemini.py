@@ -11,11 +11,17 @@ class GeminiSTTProvider(BaseSTTProvider):
     """
     it provides only stt capabilities
     """
-    def __init__(self, api_key: str, model: str, base_url: Optional[str] = None, system_prompt: Optional[str] = None):
+    def __init__(self, 
+                 api_key: str, 
+                 model: str, 
+                 base_url: Optional[str] = None, 
+                 system_prompt: Optional[str] = None,
+                 gen_config: Optional[Dict[str, Any]] = None,
+                 ):
+        super().__init__(system_prompt, gen_config)
         self.api_key = api_key
         self.base_url = base_url
         self.model = model
-        self.system_prompt = system_prompt or "You are a helpful assistant."
         if self.base_url is None:
             self.client = genai.Client(api_key=self.api_key)
         else:
@@ -23,14 +29,6 @@ class GeminiSTTProvider(BaseSTTProvider):
                 api_key=self.api_key, 
                 http_options=types.HttpOptions(base_url=self.base_url)
             )
-        
-    @property
-    def system_prompt(self) -> str:
-        return self.__system_prompt
-    
-    @system_prompt.setter
-    def system_prompt(self, value: str):
-        self.__system_prompt = value
         
     async def format(self, message: Message) -> Any:
         if message.data_type == "text":
@@ -41,17 +39,13 @@ class GeminiSTTProvider(BaseSTTProvider):
         else:
             raise ValueError(f"Unsupported data type: {message.data_type}")
         
-    async def stt(self, 
-                  formatted_data: List[types.Content],
-                  gen_config: Optional[Dict[str, Any]] = None) -> str:
-        if gen_config is None:
-            gen_config = {}
+    async def stt(self, formatted_data: List[types.Content]) -> str:
         response = await self.client.aio.models.generate_content(
             model=self.model,
             contents=formatted_data,
             config=types.GenerateContentConfig(
                 system_instruction=self.system_prompt,
-                **gen_config
+                **self.stt_gen_config
             ),
         )
         if isinstance(response, types.GenerateContentResponse):
@@ -60,16 +54,12 @@ class GeminiSTTProvider(BaseSTTProvider):
             raise ValueError(f"Unsupported response type: {type(response)}")
     
 
-    async def stt_stream(self, 
-                         formatted_data: List[types.Content],
-                         gen_config: Optional[Dict[str, Any]] = None) -> AsyncGenerator[str, None]:
-        if gen_config is None:
-            gen_config = {}
+    async def stt_stream(self, formatted_data: List[types.Content]) -> AsyncGenerator[str, None]:
         async for chunk in self.client.aio.models.generate_content_stream(
             model=self.model,
             contents=formatted_data,
             config=types.GenerateContentConfig(
-                **gen_config
+                **self.stt_gen_config
             ),
         ):
             if isinstance(chunk, types.GenerateContentResponse):

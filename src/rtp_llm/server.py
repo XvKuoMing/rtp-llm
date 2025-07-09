@@ -12,15 +12,11 @@ from .vad import BaseVAD
 from .utils.audio_processing import pcm2wav, StreamingResample
 from .audio_logger import AudioLogger
 from typing import Optional
-import random
 import time
+import uuid
 
 
 logger = logging.getLogger(__name__)
-
-TTS_RESPONSE_FORMAT = "pcm"
-TTS_SAMPLE_RATE = 24_000
-
 
 class Server:
 
@@ -60,7 +56,7 @@ class Server:
         if self.last_response_time is None:
             self.last_response_time = time.time()
 
-        uid = uid or random.randint(0, 1000000)
+        uid = uid or str(uuid.uuid4())
         self.audio_logger = AudioLogger(
             uid=uid, 
             sample_rate=self.adapter.sample_rate)
@@ -111,6 +107,7 @@ class Server:
                 need_run_agent = await self.flow_manager.run_agent(vad_state)
 
                 if max_time_reached or need_run_agent:
+                    await self.audio_logger.beep() # NOTE: this is a hack to make the user aware that the agent started answering
                     logger.info(f"Answering to the user; max_time_reached: {max_time_reached}, need_run_agent: {need_run_agent}")
                     asyncio.create_task(self.answer(buffer_audio))
                     await self.flow_manager.reset()
@@ -149,8 +146,6 @@ class Server:
         speech = await self.agent.tts(
             text=text,
             stream=True,
-            response_format=TTS_RESPONSE_FORMAT,
-            response_sample_rate=TTS_SAMPLE_RATE,
         )
         logger.info(f"Generated speech for: {text}" if speech else "No speech generated")
 
@@ -158,15 +153,15 @@ class Server:
         total_bytes = 0
 
         resampler = StreamingResample(
-            original_sample_rate=TTS_SAMPLE_RATE, 
+            original_sample_rate=self.agent.tts_provider.response_sample_rate, 
             target_sample_rate=self.adapter.sample_rate)
         
         async for chunk in speech:
             chunk_count += 1
             total_bytes += len(chunk)
             logger.debug(f"Sending chunk {chunk_count} of {total_bytes} bytes")
-            if TTS_SAMPLE_RATE != self.adapter.sample_rate:
-                logger.debug(f"Resampling audio from {TTS_SAMPLE_RATE}Hz to {self.adapter.sample_rate}Hz")
+            if self.agent.tts_provider.response_sample_rate != self.adapter.sample_rate:
+                logger.debug(f"Resampling audio from {self.agent.tts_provider.response_sample_rate}Hz to {self.adapter.sample_rate}Hz")
                 chunk = await resampler.resample_pcm16(chunk)
 
             await self.adapter.send_audio(chunk)

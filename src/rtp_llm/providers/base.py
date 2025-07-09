@@ -18,27 +18,34 @@ class Message:
 
 class BaseTTSProvider(ABC):
 
+    @abstractmethod
+    def __init__(self, 
+                 *args,
+                 pcm_response_format: Optional[str] = None,
+                 response_sample_rate: Optional[int] = None,
+                 gen_config: Optional[Dict[str, Any]] = None,
+                 **kwargs):
+        """
+        pcm_response_format: The pcm format of the response from the tts_provider; pcm for openai, pcm_24000 for elevenlabs
+        response_sample_rate: The sample rate of the response from the tts_provider.
+        """
+        self.pcm_response_format = pcm_response_format
+        self.response_sample_rate = response_sample_rate
+        self.tts_gen_config = gen_config or {}
+
 
     @abstractmethod
     async def tts(self, 
-                  text: str, 
-                  response_format: str = "pcm",
-                  response_sample_rate: int = 24_000,
-                  gen_config: Optional[Dict[str, Any]] = None,
+                  text: str
                   ) -> bytes:
         """
         Generate audio from text.
-        TTS_RESPONSE_FORMATS = ["pcm", "ulaw", "alaw", "opus"]
-        TTS_RESPONSE_SAMPLE_RATES = [8000, 16000, 24000, 48000]
         """
         pass
 
 
     async def tts_stream(self, 
-                         text: str, 
-                         response_format: str = "pcm",
-                         response_sample_rate: int = 24_000,
-                         gen_config: Optional[Dict[str, Any]] = None,
+                         text: str
                          ) -> AsyncGenerator[bytes, None]:
         """
         Generate audio from text with streaming.
@@ -49,8 +56,13 @@ class BaseTTSProvider(ABC):
 class BaseSTTProvider(ABC):
 
     @abstractmethod
-    def __init__(self, *args, **kwargs):
-        self.system_prompt = None
+    def __init__(self, 
+                 *args,
+                 system_prompt: Optional[str] = None, 
+                 gen_config: Optional[Dict[str, Any]] = None,
+                 **kwargs):
+        self.system_prompt = system_prompt
+        self.stt_gen_config = gen_config or {}
 
     @abstractmethod
     async def format(self, message: Message) -> Any:
@@ -59,8 +71,7 @@ class BaseSTTProvider(ABC):
 
     @abstractmethod
     async def stt(self, 
-                  formatted_wav_audio: Any, 
-                  gen_config: Optional[Dict[str, Any]] = None,
+                  formatted_wav_audio: Any
                   ) -> str:
         """
         Generate text from audio message: a message with audio formatted to the provider's format.
@@ -70,7 +81,6 @@ class BaseSTTProvider(ABC):
 
     async def stt_stream(self,
                          formatted_wav_audio: Any,
-                         gen_config: Optional[Dict[str, Any]] = None,
                          ) -> AsyncGenerator[str, None]:
         """
         Generate text from audio message with streaming.

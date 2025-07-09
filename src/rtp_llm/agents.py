@@ -13,8 +13,6 @@ class VoiceAgent:
                  stt_provider: BaseSTTProvider,
                  tts_provider: BaseTTSProvider,
                  history_manager: BaseChatHistory,
-                 stt_gen_config: Optional[Dict[str, Any]] = None,
-                 tts_gen_config: Optional[Dict[str, Any]] = None,
                  backup_stt_providers: Optional[List[BaseSTTProvider]] = None,
                  backup_tts_providers: Optional[List[BaseTTSProvider]] = None):
         """
@@ -33,9 +31,6 @@ class VoiceAgent:
         self.__stt_provider = stt_provider
         self.__tts_provider = tts_provider
         self.__history_manager = history_manager
-        self.__stt_gen_config = stt_gen_config
-        self.__tts_gen_config = tts_gen_config
-
         self.backup_stt_providers = backup_stt_providers or []
         self.backup_tts_providers = backup_tts_providers or []
 
@@ -63,14 +58,12 @@ class VoiceAgent:
     async def _stt(self, 
                    audio: bytes, 
                    stream: bool = False,
-                   enable_history: bool = True,
-                   gen_config: Optional[Dict[str, Any]] = None,
+                   enable_history: bool = True
                    ) -> Optional[str | AsyncGenerator[str, None]]:
         """
         Convert audio to text using the stt_provider.
         If the primary provider fails, the agent will switch to the first available backup provider.
         """
-        gen_config = gen_config or self.__stt_gen_config
         user_message = Message(role="user", content=audio, data_type="audio")
         if enable_history:
             await self.history_manager.add_message(user_message)
@@ -78,22 +71,22 @@ class VoiceAgent:
         messages = await self.history_manager.get_messages(self.stt_provider.format)
         if stream:
             if enable_history:
-                return self._stt_stream_with_history(messages, gen_config)
+                return self._stt_stream_with_history(messages)
             else:
-                return self.stt_provider.stt_stream(messages, gen_config)
+                return self.stt_provider.stt_stream(messages)
         else:
-            content = await self.stt_provider.stt(messages, gen_config)
+            content = await self.stt_provider.stt(messages)
             if enable_history:
                 await self.history_manager.add_message(Message(role="assistant", content=content, data_type="text"))
             return content
 
-    async def _stt_stream_with_history(self, messages, gen_config):
+    async def _stt_stream_with_history(self, messages):
         """
         Stream STT response while accumulating full text for history.
         This yields chunks immediately (low latency) while building complete response.
         """
         accumulated_text = ""
-        async for chunk in self.stt_provider.stt_stream(messages, gen_config):
+        async for chunk in self.stt_provider.stt_stream(messages):
             accumulated_text += chunk
             yield chunk
         
@@ -104,32 +97,19 @@ class VoiceAgent:
     async def _tts(self, 
                    text: str,
                    stream: bool = False, 
-                   response_format: str = "pcm",
-                   response_sample_rate: int = 24_000,
-                   gen_config: Optional[Dict[str, Any]] = None,
                    ) -> Optional[bytes | AsyncGenerator[bytes, None]]:
         """
         Convert text to audio using the tts_provider.
         If the primary provider fails, the agent will switch to the first available backup provider.
         """
-        gen_config = gen_config or self.__tts_gen_config
         if stream:
-            return self.tts_provider.tts_stream(
-                text=text, 
-                response_format=response_format, 
-                response_sample_rate=response_sample_rate, 
-                gen_config=gen_config)
+            return self.tts_provider.tts_stream(text=text)
         else:
-            return await self.tts_provider.tts(
-                text=text, 
-                response_format=response_format, 
-                response_sample_rate=response_sample_rate, 
-                gen_config=gen_config)
+            return await self.tts_provider.tts(text=text)
     
     async def _stt_backup(self, audio: bytes, 
                           stream: bool = False, 
                           enable_history: bool = True,
-                          gen_config: Optional[Dict[str, Any]] = None,
                           ) -> Optional[str | AsyncGenerator[str, None]]:
         """
         Convert audio to text using the backup stt_provider.
@@ -141,7 +121,7 @@ class VoiceAgent:
         for backup_provider in self.backup_stt_providers:
             self.stt_provider = backup_provider
             try:
-                return await self._stt(audio=audio, stream=stream, enable_history=enable_history, gen_config=gen_config)
+                return await self._stt(audio=audio, stream=stream, enable_history=enable_history)
             except Exception as e:
                 logger.warning(f"Backup STT provider {backup_provider.__class__.__name__} failed: {e}")
                 continue
@@ -150,9 +130,6 @@ class VoiceAgent:
     async def _tts_backup(self, 
                           text: str, 
                           stream: bool = False, 
-                          response_format: str = "pcm",
-                          response_sample_rate: int = 24_000,
-                          gen_config: Optional[Dict[str, Any]] = None,
                           ) -> Optional[bytes | AsyncGenerator[bytes, None]]:
         """
         Convert text to audio using the backup tts_provider.
@@ -165,10 +142,7 @@ class VoiceAgent:
             self.tts_provider = backup_provider
             try:
                 return await self._tts(text=text, 
-                                       stream=stream, 
-                                       response_format=response_format, 
-                                       response_sample_rate=response_sample_rate,
-                                       gen_config=gen_config)
+                                       stream=stream)
             except Exception as e:
                 logger.warning(f"Backup TTS provider {backup_provider.__class__.__name__} failed: {e}")
                 continue
@@ -200,8 +174,7 @@ class VoiceAgent:
     async def stt(self, 
                   audio: bytes, 
                   stream: bool = False, 
-                  enable_history: bool = True,
-                  gen_config: Optional[Dict[str, Any]] = None,
+                  enable_history: bool = True
                   ) -> Optional[str | AsyncGenerator[str, None]]:
         """
         Convert audio to text using the stt_provider.
@@ -211,16 +184,12 @@ class VoiceAgent:
                                             self._stt_backup, 
                                             audio=audio, 
                                             stream=stream, 
-                                            enable_history=enable_history,
-                                            gen_config=gen_config)
+                                            enable_history=enable_history)
     
 
     async def tts(self, 
-                  text: str,  
-                  response_format: str = "pcm",
-                  response_sample_rate: int = 24_000,
+                  text: str,
                   stream: bool = False,
-                  gen_config: Optional[Dict[str, Any]] = None,
                   ) -> Optional[bytes | AsyncGenerator[bytes, None]]:
         """
         Convert text to audio using the tts_provider.
@@ -229,8 +198,5 @@ class VoiceAgent:
         return await self._call_with_backup(self._tts, 
                                             self._tts_backup, 
                                             text=text, 
-                                            stream=stream,
-                                            response_format=response_format,
-                                            response_sample_rate=response_sample_rate,
-                                            gen_config=gen_config)
+                                            stream=stream)
     
