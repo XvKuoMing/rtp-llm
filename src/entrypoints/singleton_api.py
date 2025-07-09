@@ -211,9 +211,6 @@ class SingletonServer(Server):
         elif VAD == "silero":
             vad = SileroVAD(target_sample_rate)
 
-        if self.adapter.sample_rate != self.vad.sample_rate:
-            self.vad.sample_rate = self.adapter.sample_rate
-
         super().__init__(
             adapter=RTPAdapter(
                 host_ip=self.__class__.__static_host_ip,
@@ -245,8 +242,6 @@ class SingletonServer(Server):
             sample_rate=target_sample_rate,
             target_codec=target_codec
         )
-        if self.adapter.sample_rate != self.vad.sample_rate:
-            self.vad.sample_rate = self.adapter.sample_rate
                 
         return self
 
