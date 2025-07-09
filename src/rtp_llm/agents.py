@@ -94,6 +94,14 @@ class VoiceAgent:
             Message(role="assistant", content=accumulated_text, data_type="text")
         )
 
+    
+    async def _tts_iteration_check(self, gen: AsyncGenerator[bytes, None]) -> AsyncGenerator[bytes, None]:
+        """
+        starts iteration of the tts in order to catch errors if occur during iteration
+        """
+        async for chunk in gen:
+            yield chunk
+
     async def _tts(self, 
                    text: str,
                    stream: bool = False, 
@@ -103,7 +111,8 @@ class VoiceAgent:
         If the primary provider fails, the agent will switch to the first available backup provider.
         """
         if stream:
-            return self.tts_provider.tts_stream(text=text)
+            # self.tts_provider.tts_stream(text=text)
+            return self._tts_iteration_check(self.tts_provider.tts_stream(text=text))
         else:
             return await self.tts_provider.tts(text=text)
     

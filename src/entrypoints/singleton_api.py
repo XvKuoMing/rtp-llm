@@ -235,16 +235,12 @@ class SingletonServer(Server):
         return SingletonServer._task is not None and not SingletonServer._task.done()
     
     @staticmethod
-    def get_instance():
-        return SingletonServer._instance
-    
-    @staticmethod
     def set_host_ip(host_ip: str, host_port: int):
         SingletonServer.__static_host_ip = host_ip
         SingletonServer.__static_host_port = host_port
     
     @staticmethod
-    def close():
+    def close_instance():
         if SingletonServer._instance:
             SingletonServer._instance.close()
             SingletonServer._instance = None
@@ -425,7 +421,7 @@ async def stop(request: StopRTPRequest):
     try:
         if SingletonServer.is_running():
             if request.force:
-                SingletonServer.get_instance().close()
+                SingletonServer.close_instance()
                 return APIResponse(
                     message="RTP server stopped forcefully",
                     status="success",
@@ -440,7 +436,7 @@ async def stop(request: StopRTPRequest):
                     data={"is_running": True}
                 )
 
-        SingletonServer.close()
+        SingletonServer.close_instance()
         return APIResponse(
             message="RTP server stopped successfully",
             status="success",
@@ -482,7 +478,7 @@ def cleanup_shutdown():
     try:
         if SingletonServer.is_running():
             logger.info("Gracefully shutting down RTP server...")
-            SingletonServer.close()
+            SingletonServer.close_instance()
             logger.info("RTP server shutdown complete")
     except Exception as e:
         logger.error(f"Error during shutdown cleanup: {e}")
