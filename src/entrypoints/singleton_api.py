@@ -535,6 +535,8 @@ def main():
     parser.add_argument("--tts-api-key", help="TTS API key for AST LLM provider")
     parser.add_argument("--tts-base-url", default="https://api.openai.com/v1", help="TTS base URL for AST LLM provider")
     parser.add_argument("--tts-model", default="gpt-4o-mini-tts", help="TTS model for AST LLM provider")
+    parser.add_argument("--tts-pcm-response-format", default="pcm", help="TTS PCM response format for AST LLM provider")
+    parser.add_argument("--tts-response-sample-rate", type=int, default=24000, help="TTS response sample rate for AST LLM provider")
     
     args = parser.parse_args()
 
