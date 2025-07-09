@@ -235,6 +235,10 @@ class SingletonServer(Server):
         return SingletonServer._task is not None and not SingletonServer._task.done()
     
     @staticmethod
+    def get_instance():
+        return SingletonServer._instance
+    
+    @staticmethod
     def set_host_ip(host_ip: str, host_port: int):
         SingletonServer.__static_host_ip = host_ip
         SingletonServer.__static_host_port = host_port
@@ -421,7 +425,7 @@ async def stop(request: StopRTPRequest):
     try:
         if SingletonServer.is_running():
             if request.force:
-                SingletonServer.close()
+                SingletonServer.get_instance().close()
                 return APIResponse(
                     message="RTP server stopped forcefully",
                     status="success",

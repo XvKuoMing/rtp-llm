@@ -10,7 +10,7 @@ class WebRTCVAD(BaseVAD):
     def __init__(self, sample_rate: int = 8000, aggressiveness: int = 3, min_speech_duration_ms: int = 30):
         self.vad = webrtcvad.Vad(aggressiveness)
         self.sample_rate = sample_rate
-        self.speech_duration_ms = min_speech_duration_ms
+        self.min_speech_duration_ms = min_speech_duration_ms
         
         # Validate sample rate
         if self.sample_rate not in [8000, 16000, 32000, 48000]:
