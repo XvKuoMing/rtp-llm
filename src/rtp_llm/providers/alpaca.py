@@ -86,13 +86,9 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
             raise ValueError("STT or TTS client is not set")
 
     @property
-    def system_prompt(self) -> Optional[str]:
+    def formatted_system_prompt(self) -> Optional[str]:
         return {"role": "system", "content": self.__system_prompt}
-    
-    @system_prompt.setter
-    def system_prompt(self, value: Optional[str]):
-        self.system_prompt = value
-    
+        
     async def format(self, message: Message) -> Union[TextOpenAIMessage, AudioOpenAIMessage]:
         if message.data_type == "text":
             return TextOpenAIMessage(role=message.role, content=message.content)
@@ -107,7 +103,7 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
             raise ValueError("STT client is not set")
         response = await self.stt_client.chat.completions.create(
             model=self.stt_model,
-            messages=[self.system_prompt] + [message.as_json() for message in formatted_data],
+            messages=[self.formatted_system_prompt] + [message.as_json() for message in formatted_data],
             **self.stt_gen_config
         )
         if isinstance(response, ChatCompletion):
@@ -121,7 +117,7 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
             raise ValueError("STT client is not set")
         response = await self.stt_client.chat.completions.create(
             model=self.stt_model,
-            messages=[self.system_prompt] + [message.as_json() for message in formatted_data],
+            messages=[self.formatted_system_prompt] + [message.as_json() for message in formatted_data],
             stream=True,
             **self.stt_gen_config
         )
