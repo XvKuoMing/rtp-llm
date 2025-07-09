@@ -19,6 +19,8 @@ class GeminiSTTProvider(BaseSTTProvider):
                  gen_config: Optional[Dict[str, Any]] = None,
                  ):
         super().__init__(system_prompt, gen_config)
+        # self.system_prompt = system_prompt or "You are a helpful assistant."
+        # self.stt_gen_config = gen_config
         self.api_key = api_key
         self.base_url = base_url
         self.model = model

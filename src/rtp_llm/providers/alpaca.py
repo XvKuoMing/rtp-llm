@@ -4,6 +4,7 @@ from .base import BaseTTSProvider, BaseSTTProvider, Message
 from openai import AsyncOpenAI
 from openai.types.audio import Transcription
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
+# from openai.types import AsyncResponseContextManager, AsyncStreamedBinaryAPIResponse, HttpxBinaryResponseContent
 
 from typing import AsyncGenerator, Any, Optional, Union, List, Dict
 import base64
@@ -59,9 +60,13 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
         """
         self.stt_model = stt_model
         self.tts_model = tts_model
-        self.__system_prompt = system_prompt or "You are a helpful assistant."
-        super(BaseTTSProvider, self).__init__(pcm_response_format, response_sample_rate, tts_gen_config)
-        super(BaseSTTProvider, self).__init__(system_prompt, stt_gen_config)
+        self.system_prompt = system_prompt or "You are a helpful assistant."
+        self.pcm_response_format = pcm_response_format
+        self.response_sample_rate = response_sample_rate
+        self.tts_gen_config = tts_gen_config
+        self.stt_gen_config = stt_gen_config
+        # super(BaseTTSProvider, self).__init__(pcm_response_format, response_sample_rate, tts_gen_config)
+        # super(BaseSTTProvider, self).__init__(system_prompt, stt_gen_config)
 
         self.stt_api_key = overwrite_stt_model_api_key or api_key
         self.stt_base_url = overwrite_stt_model_base_url or base_url
@@ -136,6 +141,8 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
             response_format=self.pcm_response_format,
             **self.tts_gen_config
         )
+        # if not isinstance(response, HttpxBinaryResponseContent):
+            # raise ValueError(f"Unsupported response type: {type(response)}")
         return response.content
 
     async def tts_stream(self, text: str) -> AsyncGenerator[bytes, None]:
@@ -147,6 +154,8 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
             response_format=self.pcm_response_format,
             **self.tts_gen_config
         ) as response:
+            # if not isinstance(response, AsyncResponseContextManager[AsyncStreamedBinaryAPIResponse]):
+            #     raise ValueError(f"Unsupported response type: {type(response)}")
             async for chunk in response.iter_bytes():
                 yield chunk
 
