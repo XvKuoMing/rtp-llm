@@ -44,7 +44,7 @@ class WebRTCVAD(BaseVAD):
                     total_speech_duration_ms += frame_duration_ms
                     
                     # Early exit if we've already found enough speech
-                    if total_speech_duration_ms >= self.speech_duration_ms:
+                    if total_speech_duration_ms >= self.min_speech_duration_ms:
                         return VoiceState.SPEECH
                 
                 offset += frame_size
@@ -70,7 +70,7 @@ class WebRTCVAD(BaseVAD):
                         total_speech_duration_ms += frame_duration
             
             # Return SPEECH only if we found enough speech duration
-            return VoiceState.SPEECH if total_speech_duration_ms >= self.speech_duration_ms else VoiceState.SILENCE
+            return VoiceState.SPEECH if total_speech_duration_ms >= self.min_speech_duration_ms else VoiceState.SILENCE
             
         except Exception as e:
             logger.error(f"Error in WebRTC VAD detection: {e}")
