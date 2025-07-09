@@ -39,7 +39,7 @@ class Server:
         self.vad = vad
         self.agent = agent
 
-        self.vad_interval =  (self.adapter.sample_rate * 2) * vad_interval # NOTE: 500ms, do not recommend to change
+        self.vad_interval = int((self.adapter.sample_rate * 2) * vad_interval) # NOTE: 500ms, do not recommend to change
         if self.vad_interval < self.vad.min_speech_duration_ms:
             raise ValueError(f"VAD interval is less than min speech duration: {self.vad_interval} < {self.vad.min_speech_duration_ms}")
         if self.vad_interval // 2 <= self.vad.min_speech_duration_ms:
@@ -49,7 +49,7 @@ class Server:
         self.max_wait_time = max_wait_time
         self.last_response_time = None
         self.processed_seconds = 0
-        self.speaking = False
+        self.speaking: Optional[asyncio.Task]= None
         self.answer_lock = asyncio.Lock()
 
 
@@ -104,7 +104,7 @@ class Server:
         
         if first_message is not None and self.adapter.peer_is_configured:
             logger.info(f"Speaking first message: {first_message}")
-            asyncio.create_task(self.speak(first_message))
+            self.speaking = asyncio.create_task(self.speak(first_message))
             first_message = None
 
         while True:
@@ -115,7 +115,8 @@ class Server:
                 continue
 
             async with self.answer_lock:
-                if self.speaking:
+                is_speaking = self.speaking is not None and not self.speaking.done()
+                if is_speaking:
                     # saving user audio while speaking ## NOTE: as for now simply discard
                     # await self.audio_buffer.add_frame(audio)
                     # await self.audio_logger.log_user(audio)
@@ -123,7 +124,7 @@ class Server:
 
                 if first_message and self.adapter.peer_is_configured:
                     logger.info(f"Speaking first message: {first_message}")
-                    asyncio.create_task(self.speak(first_message))
+                    self.speaking = asyncio.create_task(self.speak(first_message))
                     first_message = None
                     continue
 
@@ -135,7 +136,7 @@ class Server:
                 # last_second = (self.adapter.sample_rate * 2) // 2 #NOTE: 500ms
                 if len(buffer_audio) < self.processed_seconds + self.vad_interval: # ensure to not check the same second multiple times
                     continue
-                if self.speaking:
+                if is_speaking:
                     continue
                 last_chunk_audio = buffer_audio[self.processed_seconds:self.processed_seconds + self.vad_interval] # cutting last second of audio
                 self.processed_seconds += self.vad_interval
@@ -149,7 +150,7 @@ class Server:
                     if need_run_agent:
                         await self.audio_logger.beep() # NOTE: this is a hack to make the user aware that the agent started answering
                     logger.info(f"Answering to the user; max_time_reached: {max_time_reached}, need_run_agent: {need_run_agent}")
-                    asyncio.create_task(self.answer(buffer_audio))
+                    self.speaking = asyncio.create_task(self.answer(buffer_audio))
                     self.flow_manager.reset()
                     self.audio_buffer.clear()
                     self.processed_seconds = 0
@@ -161,7 +162,6 @@ class Server:
         answer the audio
         """
         try:
-            self.speaking = True
             wav_audio = await pcm2wav(audio, sample_rate=self.adapter.sample_rate)
             logger.info(f"Converted to wav, {len(wav_audio)} bytes")
             response = await self.agent.stt(
@@ -174,15 +174,12 @@ class Server:
         except Exception as e:
             logger.error(f"Error answering audio: {e}")
             return None
-        finally:
-            self.speaking = False
     
 
     async def speak(self, text: str):
         """
         speak the text
         """
-        self.speaking = True
         speech = await self.agent.tts(
             text=text,
             stream=True,
@@ -215,7 +212,6 @@ class Server:
         logger.info(f"Finished speaking: {chunk_count} chunks, total {total_bytes} bytes")
         await self.audio_logger.save()
         self.last_response_time = time.time()
-        self.speaking = False
         
 
     def close(self):
@@ -224,7 +220,7 @@ class Server:
         self.audio_buffer.clear()
         self.agent.history_manager.clear()
         self.flow_manager.reset()
-        self.speaking = False
+        self.speaking = None
         self.processed_seconds = 0
         self.last_response_time = None
 
