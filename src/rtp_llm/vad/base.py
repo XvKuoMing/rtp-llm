@@ -8,8 +8,9 @@ class VoiceState(Enum):
     
 class BaseVAD(ABC):
 
-    def __init__(self, sample_rate: int):
+    def __init__(self, sample_rate: int, min_speech_duration_ms: int = 60):
         self.sample_rate = sample_rate
+        self.min_speech_duration_ms: int = min_speech_duration_ms
     
     @abstractmethod
     async def detect(self, pcm16_frame: bytes) -> VoiceState:

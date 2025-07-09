@@ -18,6 +18,8 @@ import uuid
 
 logger = logging.getLogger(__name__)
 
+VAD_INTERVAL = 0.5 # 500ms, 1.0 - sec
+
 class Server:
 
     def __init__(self,
@@ -27,6 +29,7 @@ class Server:
                  vad: BaseVAD,
                  agent: VoiceAgent,
                  max_wait_time: int = 7, # <= 0 means no max wait time
+                 vad_interval: float = VAD_INTERVAL,
                  ):
         
         # components
@@ -35,7 +38,13 @@ class Server:
         self.flow_manager = flow_manager
         self.vad = vad
         self.agent = agent
-        
+
+        self.vad_interval =  (self.adapter.sample_rate * 2) * vad_interval # NOTE: 500ms, do not recommend to change
+        if self.vad_interval < self.vad.min_speech_duration_ms:
+            raise ValueError(f"VAD interval is less than min speech duration: {self.vad_interval} < {self.vad.min_speech_duration_ms}")
+        if self.vad_interval // 2 <= self.vad.min_speech_duration_ms:
+            logger.warning(f"Min speech duration might be too high for given vad interval, consider increasing vad interval or decreasing min speech duration")
+
         # state management
         self.max_wait_time = max_wait_time
         self.last_response_time = None
@@ -49,19 +58,12 @@ class Server:
     def update_agent_config(
             self,
             system_prompt: Optional[str] = None,
-            tts_pcm_response_format: Optional[str] = None,
-            tts_response_sample_rate: Optional[int] = None,
             tts_gen_config: Optional[Dict[str, Any]] = None,
             stt_gen_config: Optional[Dict[str, Any]] = None,
     ):
         if system_prompt:
             self.agent.stt_provider.system_prompt = system_prompt
-        
-        if tts_pcm_response_format:
-            self.agent.tts_provider.pcm_response_format = tts_pcm_response_format
-        if tts_response_sample_rate:
-            self.agent.tts_provider.response_sample_rate = tts_response_sample_rate
-        
+                
         if tts_gen_config:
             self.agent.tts_provider.tts_gen_config = tts_gen_config
         if stt_gen_config:
@@ -73,8 +75,6 @@ class Server:
                   uid: Optional[int | str] = None, 
                   allow_interruptions: bool = False,
                   system_prompt: Optional[str] = None,
-                  tts_pcm_response_format: Optional[str] = "pcm",
-                  tts_response_sample_rate: Optional[int] = 24_000,
                   tts_gen_config: Optional[Dict[str, Any]] = None,
                   stt_gen_config: Optional[Dict[str, Any]] = None,
                   volume: float = 1.0,
@@ -88,8 +88,6 @@ class Server:
 
         self.update_agent_config(
             system_prompt=system_prompt,
-            tts_pcm_response_format=tts_pcm_response_format,
-            tts_response_sample_rate=tts_response_sample_rate,
             tts_gen_config=tts_gen_config,
             stt_gen_config=stt_gen_config,
         )
@@ -134,13 +132,13 @@ class Server:
 
                 buffer_audio = await self.audio_buffer.get_frames()
                 # last_second = self.adapter.sample_rate * 2 # 2 bytes per sample for pcm16
-                last_second = (self.adapter.sample_rate * 2) // 2 #NOTE: 500ms
-                if len(buffer_audio) < self.processed_seconds + last_second: # ensure to not check the same second multiple times
+                # last_second = (self.adapter.sample_rate * 2) // 2 #NOTE: 500ms
+                if len(buffer_audio) < self.processed_seconds + self.vad_interval: # ensure to not check the same second multiple times
                     continue
                 if self.speaking:
                     continue
-                last_second_of_audio = buffer_audio[self.processed_seconds:self.processed_seconds + last_second] # cutting last second of audio
-                self.processed_seconds += last_second
+                last_second_of_audio = buffer_audio[self.processed_seconds:self.processed_seconds + self.vad_interval] # cutting last second of audio
+                self.processed_seconds += self.vad_interval
 
                 vad_state = await self.vad.detect(last_second_of_audio)
 

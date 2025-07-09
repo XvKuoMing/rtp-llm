@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 class SileroVAD(BaseVAD):
 
-    def __init__(self, sample_rate: int = 8000, threshold: float = 0.5):
+    def __init__(self, sample_rate: int = 8000, threshold: float = 0.5, min_speech_duration_ms: int = 60):
         """
         Initialize Silero VAD.
         
@@ -19,6 +19,7 @@ class SileroVAD(BaseVAD):
         """
         self.sample_rate = sample_rate
         self.threshold = threshold
+        self.min_speech_duration_ms = min_speech_duration_ms #TODO: actually use it
         
         # Load the Silero VAD model
         self.model = load_silero_vad()
