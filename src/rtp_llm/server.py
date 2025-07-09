@@ -9,7 +9,7 @@ from .buffer import BaseAudioBuffer
 from .flow import BaseChatFlowManager
 from .agents import VoiceAgent
 from .vad import BaseVAD
-from .utils.audio_processing import pcm2wav, StreamingResample
+from .utils.audio_processing import pcm2wav, StreamingResample, adjust_volume_pcm16
 from .audio_logger import AudioLogger
 from typing import Optional, Dict, Any
 import time
@@ -42,6 +42,9 @@ class Server:
         self.processed_seconds = 0
         self.speaking = False
         self.answer_lock = asyncio.Lock()
+
+
+        self.volume = 1.0 # default volume
     
     def update_agent_config(
             self,
@@ -74,10 +77,14 @@ class Server:
                   tts_response_sample_rate: Optional[int] = 24_000,
                   tts_gen_config: Optional[Dict[str, Any]] = None,
                   stt_gen_config: Optional[Dict[str, Any]] = None,
+                  volume: float = 1.0,
                   ):
         """
         run the server
         """
+
+        # Store volume setting
+        self.volume = volume
 
         self.update_agent_config(
             system_prompt=system_prompt,
@@ -126,7 +133,8 @@ class Server:
                 await self.audio_logger.log_user(audio)
 
                 buffer_audio = await self.audio_buffer.get_frames()
-                last_second = self.adapter.sample_rate * 2 # 2 bytes per sample for pcm16
+                # last_second = self.adapter.sample_rate * 2 # 2 bytes per sample for pcm16
+                last_second = (self.adapter.sample_rate * 2) // 2 #NOTE: 500ms
                 if len(buffer_audio) < self.processed_seconds + last_second: # ensure to not check the same second multiple times
                     continue
                 if self.speaking:
@@ -197,6 +205,11 @@ class Server:
             if self.agent.tts_provider.response_sample_rate != self.adapter.sample_rate:
                 logger.debug(f"Resampling audio from {self.agent.tts_provider.response_sample_rate}Hz to {self.adapter.sample_rate}Hz")
                 chunk = await resampler.resample_pcm16(chunk)
+
+            # Apply volume adjustment
+            if self.volume != 1.0:
+                logger.debug(f"Applying volume adjustment: {self.volume}")
+                chunk = await adjust_volume_pcm16(chunk, self.volume)
 
             await self.adapter.send_audio(chunk)
             await self.audio_logger.log_ai(chunk)

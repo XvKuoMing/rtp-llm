@@ -152,3 +152,47 @@ async def opus2pcm(opus: bytes, sample_rate: int = 8000) -> bytes:
             
     except Exception as e:
         logger.error(f"Error converting Opus to PCM: {e}")
+
+
+async def adjust_volume_pcm16(pcm16: bytes, volume_factor: float) -> bytes:
+    """
+    Adjust the volume of PCM16 audio data.
+    
+    Args:
+        pcm16: PCM16 audio data as bytes
+        volume_factor: Volume multiplier (1.0 = no change, >1.0 = louder, <1.0 = quieter)
+                      Examples: 0.5 = half volume, 2.0 = double volume
+    
+    Returns:
+        Modified PCM16 audio data as bytes with adjusted volume
+    """
+    try:
+        if not pcm16:
+            logger.debug("No audio data provided, returning empty bytes")
+            return b''
+        
+        if volume_factor < 0:
+            logger.warning(f"Negative volume factor {volume_factor} not supported, using absolute value")
+            volume_factor = abs(volume_factor)
+        
+        # Convert PCM16 bytes to numpy array
+        pcm16_array = np.frombuffer(pcm16, dtype=np.int16)
+        
+        # Convert to float32 and normalize to [-1, 1] range
+        audio_float = pcm16_array.astype(np.float32) / 32768.0
+        
+        # Apply volume adjustment
+        audio_float *= volume_factor
+        
+        # Clip to prevent overflow and distortion
+        audio_float = np.clip(audio_float, -1.0, 1.0)
+        
+        # Convert back to int16
+        pcm16_adjusted = (audio_float * 32767).astype(np.int16)
+        
+        logger.debug(f"Adjusted volume by factor {volume_factor} for {len(pcm16)} bytes of audio")
+        return pcm16_adjusted.tobytes()
+        
+    except Exception as e:
+        logger.error(f"Error adjusting volume: {e}")
+        return pcm16  # Return original data if error occurs

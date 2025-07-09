@@ -207,7 +207,7 @@ class SingletonServer(Server):
                  target_codec: Optional[str] = None,
                  ):
         if VAD == "webrtc":
-            vad = WebRTCVAD(target_sample_rate, min_speech_duration_ms=100)
+            vad = WebRTCVAD(target_sample_rate, min_speech_duration_ms=60)
         elif VAD == "silero":
             vad = SileroVAD(target_sample_rate)
 
@@ -255,6 +255,7 @@ class SingletonServer(Server):
                   tts_response_sample_rate: Optional[int] = 24_000,
                   tts_gen_config: Optional[Dict[str, Any]] = None,
                   stt_gen_config: Optional[Dict[str, Any]] = None,
+                  tts_volume: Optional[float] = 1.0,
                   ):
         try:
             self._task = asyncio.create_task(super().run(
@@ -267,6 +268,7 @@ class SingletonServer(Server):
                 tts_response_sample_rate=tts_response_sample_rate,
                 tts_gen_config=tts_gen_config,
                 stt_gen_config=stt_gen_config,
+                volume=tts_volume,
             ))
         except Exception as e:
             logger.error(f"Error running server: {e}")
@@ -298,6 +300,7 @@ class StartRTPRequest(BaseModel):
     target_sample_rate: Optional[int] = None
     tts_pcm_response_format: Optional[str] = "pcm"
     tts_response_sample_rate: Optional[int] = 24_000
+    tts_volume: Optional[float] = 1.0
     first_message: Optional[str] = None
     allow_interruptions: bool = False
     system_prompt: Optional[str] = None
@@ -348,6 +351,7 @@ async def start(request: StartRTPRequest):
             tts_response_sample_rate=request.tts_response_sample_rate,
             tts_gen_config=request.tts_gen_config,
             stt_gen_config=request.stt_gen_config,
+            tts_volume=request.tts_volume,
         )
         
         return APIResponse(
