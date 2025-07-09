@@ -89,10 +89,15 @@ tts_backup_provider = []
 voice_agent = None
 
 def parse_provider_list(provider_string: str) -> List[str]:
-    """Parse provider string like 'gemini;openai' into list ['gemini', 'openai']"""
+    """Parse provider string like 'gemini;openai' or 'gemini,openai' into list ['gemini', 'openai']"""
     if not provider_string:
         return []
-    return [p.strip() for p in provider_string.split(';') if p.strip()]
+    # Support both semicolon and comma separators
+    if ';' in provider_string:
+        separator = ';'
+    else:
+        separator = ','
+    return [p.strip() for p in provider_string.split(separator) if p.strip()]
 
 def initialize_agent(system_prompt: Optional[str] = None, chat_limit: int = 10):
     """Initialize STT and TTS providers based on configuration and availability"""
