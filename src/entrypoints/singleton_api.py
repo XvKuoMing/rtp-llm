@@ -45,6 +45,10 @@ VAD = os.getenv("VAD", "webrtc").lower()
 MAX_WAIT_TIME = int(os.getenv("MAX_WAIT_TIME", 5))
 CHAT_LIMIT = int(os.getenv("CHAT_LIMIT", 10))
 
+DEFAULT_TTS_PCM_RESPONSE_FORMAT = "pcm"
+DEFAULT_TTS_RESPONSE_SAMPLE_RATE = 24_000
+
+
 providers = {
     "gemini": {
         "stt": {
@@ -57,12 +61,14 @@ providers = {
         "stt": {
             "overwrite_stt_model_api_key": os.getenv("OPENAI_STT_API_KEY"),
             "overwrite_stt_model_base_url": os.getenv("OPENAI_STT_BASE_URL", "https://api.openai.com/v1"),
-            "stt_model": os.getenv("OPENAI_STT_MODEL", "gpt-4o-mini-audio-preview"),
+            "stt_model": os.getenv("OPENAI_STT_MODEL", "gpt-4o-mini-audio-preview")
         },
         "tts": {
             "overwrite_tts_model_api_key": os.getenv("OPENAI_TTS_API_KEY"),
             "overwrite_tts_model_base_url": os.getenv("OPENAI_TTS_BASE_URL", "https://api.openai.com/v1"),
-            "tts_model": os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
+            "tts_model": os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts"),
+            "pcm_response_format": os.getenv("OPENAI_TTS_PCM_RESPONSE_FORMAT", DEFAULT_TTS_PCM_RESPONSE_FORMAT),
+            "response_sample_rate": os.getenv("OPENAI_TTS_RESPONSE_SAMPLE_RATE", DEFAULT_TTS_RESPONSE_SAMPLE_RATE),
         }
     },
     "ast_llm": {
@@ -75,6 +81,13 @@ providers = {
             "overwrite_stt_api_key": os.getenv("LLM_API_KEY"),
             "overwrite_stt_base_url": os.getenv("LLM_BASE_URL", "https://api.openai.com/v1"),
         },
+        "tts": {
+            "overwrite_tts_model_api_key": os.getenv("TTS_API_KEY"),
+            "overwrite_tts_model_base_url": os.getenv("TTS_BASE_URL", "https://api.openai.com/v1"),
+            "tts_model": os.getenv("TTS_MODEL", "gpt-4o-mini-tts"),
+            "pcm_response_format": os.getenv("TTS_PCM_RESPONSE_FORMAT", DEFAULT_TTS_PCM_RESPONSE_FORMAT),
+            "response_sample_rate": os.getenv("TTS_RESPONSE_SAMPLE_RATE", DEFAULT_TTS_RESPONSE_SAMPLE_RATE),
+        }
     }
 }
 
@@ -192,15 +205,14 @@ class SingletonServer(Server):
                  peer_port: Optional[int] = None, 
                  target_sample_rate: Optional[int] = None, 
                  target_codec: Optional[str] = None,
-                 system_prompt: Optional[str] = None,
                  ):
         if VAD == "webrtc":
             vad = WebRTCVAD(target_sample_rate, min_speech_duration_ms=100)
         elif VAD == "silero":
             vad = SileroVAD(target_sample_rate)
-        
-        if system_prompt:
-            voice_agent.stt_provider.system_prompt = system_prompt
+
+        if self.adapter.sample_rate != self.vad.sample_rate:
+            self.vad.sample_rate = self.adapter.sample_rate
 
         super().__init__(
             adapter=RTPAdapter(
@@ -223,11 +235,6 @@ class SingletonServer(Server):
                  peer_port: Optional[int] = None, 
                  target_sample_rate: Optional[int] = None, 
                  target_codec: Optional[str] = None,
-                 system_prompt: Optional[str] = None,
-                 tts_pcm_response_format: Optional[str] = "pcm",
-                 tts_response_sample_rate: Optional[int] = 24_000,
-                 tts_gen_config: Optional[Dict[str, Any]] = None,
-                 stt_gen_config: Optional[Dict[str, Any]] = None,
                  ):
         
         self.adapter = RTPAdapter(
@@ -240,34 +247,31 @@ class SingletonServer(Server):
         )
         if self.adapter.sample_rate != self.vad.sample_rate:
             self.vad.sample_rate = self.adapter.sample_rate
-        
-        if system_prompt:
-            self.agent.stt_provider.system_prompt = system_prompt
-        
-        if tts_pcm_response_format:
-            self.agent.tts_provider.pcm_response_format = tts_pcm_response_format
-        if tts_response_sample_rate:
-            self.agent.tts_provider.response_sample_rate = tts_response_sample_rate
-
-        if tts_gen_config:
-            self.agent.tts_provider.tts_gen_config = tts_gen_config
-        if stt_gen_config:
-            self.agent.stt_provider.stt_gen_config = stt_gen_config
-        
-        
+                
         return self
 
     async def run(self, 
                   first_message: Optional[str] = None, 
                   uid: Optional[int | str] = None, 
+                  allow_interruptions: bool = False,
+                  
                   system_prompt: Optional[str] = None,
-                  allow_interruptions: bool = False):
+                  tts_pcm_response_format: Optional[str] = "pcm",
+                  tts_response_sample_rate: Optional[int] = 24_000,
+                  tts_gen_config: Optional[Dict[str, Any]] = None,
+                  stt_gen_config: Optional[Dict[str, Any]] = None,
+                  ):
         try:
             self._task = asyncio.create_task(super().run(
                 first_message=first_message,
                 uid=uid,
+                allow_interruptions=allow_interruptions,
+
                 system_prompt=system_prompt,
-                allow_interruptions=allow_interruptions
+                tts_pcm_response_format=tts_pcm_response_format,
+                tts_response_sample_rate=tts_response_sample_rate,
+                tts_gen_config=tts_gen_config,
+                stt_gen_config=stt_gen_config,
             ))
         except Exception as e:
             logger.error(f"Error running server: {e}")
@@ -337,14 +341,14 @@ async def start(request: StartRTPRequest):
             peer_port=request.peer_port,
             target_codec=request.target_codec,
             target_sample_rate=request.target_sample_rate,
-            system_prompt=request.system_prompt,
         )
 
         await server.run(
             first_message=request.first_message,
             uid=request.uid,
-            system_prompt=request.system_prompt,
             allow_interruptions=request.allow_interruptions,
+
+            system_prompt=request.system_prompt,
             tts_pcm_response_format=request.tts_pcm_response_format,
             tts_pcm_response_sample_rate=request.tts_response_sample_rate,
             tts_gen_config=request.tts_gen_config,

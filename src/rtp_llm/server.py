@@ -11,7 +11,7 @@ from .agents import VoiceAgent
 from .vad import BaseVAD
 from .utils.audio_processing import pcm2wav, StreamingResample
 from .audio_logger import AudioLogger
-from typing import Optional
+from typing import Optional, Dict, Any
 import time
 import uuid
 
@@ -43,15 +43,51 @@ class Server:
         self.speaking = False
         self.answer_lock = asyncio.Lock()
     
+    def update_agent_config(
+            self,
+            system_prompt: Optional[str] = None,
+            tts_pcm_response_format: Optional[str] = None,
+            tts_response_sample_rate: Optional[int] = None,
+            tts_gen_config: Optional[Dict[str, Any]] = None,
+            stt_gen_config: Optional[Dict[str, Any]] = None,
+    ):
+        if system_prompt:
+            self.agent.stt_provider.system_prompt = system_prompt
+        
+        if tts_pcm_response_format:
+            self.agent.tts_provider.pcm_response_format = tts_pcm_response_format
+        if tts_response_sample_rate:
+            self.agent.tts_provider.response_sample_rate = tts_response_sample_rate
+        
+        if tts_gen_config:
+            self.agent.tts_provider.tts_gen_config = tts_gen_config
+        if stt_gen_config:
+            self.agent.stt_provider.stt_gen_config = stt_gen_config
+
 
     async def run(self, 
                   first_message: Optional[str] = None, 
                   uid: Optional[int | str] = None, 
+                  allow_interruptions: bool = False,
                   system_prompt: Optional[str] = None,
-                  allow_interruptions: bool = False):
+                  tts_pcm_response_format: Optional[str] = "pcm",
+                  tts_response_sample_rate: Optional[int] = 24_000,
+                  tts_gen_config: Optional[Dict[str, Any]] = None,
+                  stt_gen_config: Optional[Dict[str, Any]] = None,
+                  ):
         """
         run the server
         """
+
+        self.update_agent_config(
+            system_prompt=system_prompt,
+            tts_pcm_response_format=tts_pcm_response_format,
+            tts_response_sample_rate=tts_response_sample_rate,
+            tts_gen_config=tts_gen_config,
+            stt_gen_config=stt_gen_config,
+        )
+
+
         # Handle first message outside the main loop
         if self.last_response_time is None:
             self.last_response_time = time.time()
@@ -60,9 +96,6 @@ class Server:
         self.audio_logger = AudioLogger(
             uid=uid, 
             sample_rate=self.adapter.sample_rate)
-        
-        if system_prompt:
-            self.agent.stt_provider.system_prompt = system_prompt
         
         if first_message is not None and self.adapter.peer_is_configured:
             logger.info(f"Speaking first message: {first_message}")
