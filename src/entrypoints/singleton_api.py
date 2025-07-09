@@ -552,6 +552,7 @@ def main():
     atexit.register(cleanup_shutdown)
 
     # Set global config from command line arguments
+    global config
     config = Config(
         host=args.host,
         port=args.port,
