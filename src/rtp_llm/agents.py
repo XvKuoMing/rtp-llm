@@ -59,13 +59,13 @@ class VoiceAgent:
         """
         Update the stt_provider config.
         """
-        self.stt_provider.stt_gen_config = self.stt_provider.validate_stt_config(config)
+        self.stt_provider.stt_gen_config = self.stt_provider.validate_stt_config(config) or {}
     
     def update_tts_config(self, config: Dict[str, Any]):
         """
         Update the tts_provider config.
         """
-        self.tts_provider.tts_gen_config = self.tts_provider.validate_tts_config(config)
+        self.tts_provider.tts_gen_config = self.tts_provider.validate_tts_config(config) or {}
     
     async def _stt(self, 
                    audio: bytes, 
@@ -221,7 +221,7 @@ class VoiceAgent:
         coro must accept pcm16 chunks as bytes and output None
         """
         # init coro
-        coro = await coro.asend(None)
+        await coro.asend(None)
 
         speech = await self.tts(text=text, stream=True)
         try:
