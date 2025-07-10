@@ -199,7 +199,7 @@ class Server:
         coro = self._speak()
         await self.agent.tts_stream_to(text, coro, try_backup=True)
         logger.info(f"Finished speaking")
-        await self.audio_logger.save()
+        asyncio.create_task(self.audio_logger.save()) # save in background to not block the main thread
         self.last_response_time = time.time()
     
     async def _speak(self):
