@@ -9,7 +9,7 @@ from .buffer import BaseAudioBuffer
 from .flow import BaseChatFlowManager
 from .agents import VoiceAgent
 from .vad import BaseVAD
-from .utils.audio_processing import pcm2wav, StreamingResample, adjust_volume_pcm16
+from .utils.audio_processing import pcm2wav, resample_pcm16, adjust_volume_pcm16
 from .audio_logger import AudioLogger
 from typing import Optional, Dict, Any
 import time
@@ -65,9 +65,9 @@ class Server:
             self.agent.stt_provider.system_prompt = system_prompt
                 
         if tts_gen_config:
-            self.agent.tts_provider.tts_gen_config = tts_gen_config
+            self.agent.update_tts_config(tts_gen_config)
         if stt_gen_config:
-            self.agent.stt_provider.stt_gen_config = stt_gen_config
+            self.agent.update_stt_config(stt_gen_config)
 
 
     async def run(self, 
@@ -183,28 +183,45 @@ class Server:
         speech = await self.agent.tts(
             text=text,
             stream=True,
-        )
+        ) # MUST PRODUCE PCM16 AS STATED IN THE DOCS
         logger.info(f"Generated speech for: {text}" if speech else "No speech generated")
 
         chunk_count = 0
         total_bytes = 0
-
-        resampler = StreamingResample(
-            original_sample_rate=self.agent.tts_provider.response_sample_rate, 
-            target_sample_rate=self.adapter.sample_rate)
         
+        buffer = b''
         async for chunk in speech:
             chunk_count += 1
             total_bytes += len(chunk)
+
+
+            if buffer:
+                logger.debug(f"Joining buffer with pcm16, buffer length: {len(buffer)}")
+                chunk = buffer + chunk
+                buffer = b''
+
+            if len(chunk) % 2 != 0:
+                logger.debug(f"Input pcm16 length is not even ({len(chunk)}), appending to deque")
+                buffer += chunk[-1:]
+                chunk = chunk[:-1]
+
+
             logger.debug(f"Sending chunk {chunk_count} of {total_bytes} bytes")
             if self.agent.tts_provider.response_sample_rate != self.adapter.sample_rate:
                 logger.debug(f"Resampling audio from {self.agent.tts_provider.response_sample_rate}Hz to {self.adapter.sample_rate}Hz")
-                chunk = await resampler.resample_pcm16(chunk)
+                chunk = await resample_pcm16(
+                    pcm16=chunk,
+                    original_sample_rate=self.agent.tts_provider.response_sample_rate,
+                    target_sample_rate=self.adapter.sample_rate,
+                )
 
             # Apply volume adjustment
             if self.volume != 1.0:
                 logger.debug(f"Applying volume adjustment: {self.volume}")
-                chunk = await adjust_volume_pcm16(chunk, self.volume)
+                chunk = await adjust_volume_pcm16(
+                    pcm16=chunk,
+                    volume_factor=self.volume,
+                )
 
             await self.adapter.send_audio(chunk)
             await self.audio_logger.log_ai(chunk)

@@ -12,7 +12,7 @@
 # import wave
 
 # from src.rtp_llm.vad import VoiceState, WebRTCVAD, SileroVAD
-# from src.rtp_llm.utils.audio_processing import StreamingResample
+# from src.rtp_llm.utils.audio_processing import resample_pcm16
 # from typing import Tuple
 
 # @pytest.fixture

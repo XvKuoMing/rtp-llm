@@ -60,6 +60,7 @@ class Config:
     openai_tts_model: str = "gpt-4o-mini-tts"
     openai_tts_pcm_response_format: str = "pcm"
     openai_tts_response_sample_rate: int = 24000
+    openai_tts_voice: str = "alloy"
     
     # AST LLM STT configuration
     ast_api_key: Optional[str] = None
@@ -76,6 +77,7 @@ class Config:
     tts_model: str = "gpt-4o-mini-tts"
     tts_pcm_response_format: str = "pcm"
     tts_response_sample_rate: int = 24000
+    tts_voice: str = "alloy"
 
 # Global configuration instance
 config: Optional[Config] = None
@@ -172,6 +174,7 @@ def initialize_agent(system_prompt: Optional[str] = None, chat_limit: int = 10):
                     tts_model=config.openai_tts_model,
                     pcm_response_format=config.openai_tts_pcm_response_format,
                     response_sample_rate=config.openai_tts_response_sample_rate,
+                    tts_voice=config.openai_tts_voice,
                 )
         elif provider == "ast_llm":
             if all([config.tts_api_key, config.tts_base_url, config.tts_model]):
@@ -181,6 +184,7 @@ def initialize_agent(system_prompt: Optional[str] = None, chat_limit: int = 10):
                     tts_model=config.tts_model,
                     pcm_response_format=config.tts_pcm_response_format,
                     response_sample_rate=config.tts_response_sample_rate,
+                    tts_voice=config.tts_voice,
                 )
         
         if provider_instance:
@@ -525,6 +529,7 @@ def main():
     parser.add_argument("--openai-tts-model", default="gpt-4o-mini-tts", help="OpenAI TTS model")
     parser.add_argument("--openai-tts-pcm-response-format", default="pcm", help="OpenAI TTS PCM response format")
     parser.add_argument("--openai-tts-response-sample-rate", type=int, default=24000, help="OpenAI TTS response sample rate")
+    parser.add_argument("--openai-tts-voice", default="alloy", help="OpenAI TTS voice")
     
     # AST LLM STT configuration  
     parser.add_argument("--ast-api-key", help="AST API key for speech-to-text")
@@ -541,6 +546,7 @@ def main():
     parser.add_argument("--tts-model", default="gpt-4o-mini-tts", help="TTS model for AST LLM provider")
     parser.add_argument("--tts-pcm-response-format", default="pcm", help="TTS PCM response format for AST LLM provider")
     parser.add_argument("--tts-response-sample-rate", type=int, default=24000, help="TTS response sample rate for AST LLM provider")
+    parser.add_argument("--tts-voice", default="alloy", help="TTS voice for AST LLM provider")
     
     args = parser.parse_args()
 
@@ -577,6 +583,7 @@ def main():
         openai_tts_model=args.openai_tts_model,
         openai_tts_pcm_response_format=args.openai_tts_pcm_response_format,
         openai_tts_response_sample_rate=args.openai_tts_response_sample_rate,
+        openai_tts_voice=args.openai_tts_voice,
         ast_api_key=args.ast_api_key,
         ast_base_url=args.ast_base_url,
         ast_model=args.ast_model,
@@ -589,6 +596,7 @@ def main():
         tts_model=args.tts_model,
         tts_pcm_response_format=args.tts_pcm_response_format,
         tts_response_sample_rate=args.tts_response_sample_rate,
+        tts_voice=args.tts_voice,
     )
 
     # Initialize agent with the configuration

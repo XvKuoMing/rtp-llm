@@ -1,5 +1,5 @@
 from .audio_processing import (
-    StreamingResample, 
+    resample_pcm16, 
     pcm2wav, 
     ulaw2pcm, 
     alaw2pcm, 
@@ -7,4 +7,4 @@ from .audio_processing import (
     adjust_volume_pcm16
 )
 
-__all__ = ["StreamingResample", "pcm2wav", "ulaw2pcm", "alaw2pcm", "opus2pcm", "adjust_volume_pcm16"]
+__all__ = ["resample_pcm16", "pcm2wav", "ulaw2pcm", "alaw2pcm", "opus2pcm", "adjust_volume_pcm16"]

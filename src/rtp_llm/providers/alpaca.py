@@ -36,6 +36,8 @@ class AudioOpenAIMessage(OpenAIMessage):
 
 
 
+valid_tts_config = {"speed", "instructions"}
+valid_stt_config = {"temperature", "top_p"}
 
 class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
 
@@ -49,6 +51,7 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
                  response_sample_rate: Optional[int] = None,
                  tts_gen_config: Optional[Dict[str, Any]] = None,
                  stt_gen_config: Optional[Dict[str, Any]] = None,
+                 tts_voice: Optional[str] = None,
                  overwrite_stt_model_api_key: Optional[str] = None,
                  overwrite_stt_model_base_url: Optional[str] = None,
                  overwrite_tts_model_api_key: Optional[str] = None,
@@ -65,6 +68,7 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
         self.response_sample_rate = response_sample_rate
         self.tts_gen_config = tts_gen_config
         self.stt_gen_config = stt_gen_config
+        self.tts_voice = tts_voice or "alloy" # required for openai tts
         # super(BaseTTSProvider, self).__init__(pcm_response_format, response_sample_rate, tts_gen_config)
         # super(BaseSTTProvider, self).__init__(system_prompt, stt_gen_config)
 
@@ -90,9 +94,22 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
         if not self.stt_client and not self.tts_client:
             raise ValueError("STT or TTS client is not set")
 
+
+    def validate_stt_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        invalidate wrong params from config, return only valid params
+        """        
+        return {k: v for k, v in config.items() if k in valid_stt_config}
+
+    def validate_tts_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        invalidate wrong params from config, return only valid params
+        """
+        return {k: v for k, v in config.items() if k in valid_tts_config}
+
     @property
     def formatted_system_prompt(self) -> Optional[str]:
-        return {"role": "system", "content": self.__system_prompt}
+        return {"role": "system", "content": self.system_prompt}
         
     async def format(self, message: Message) -> Union[TextOpenAIMessage, AudioOpenAIMessage]:
         if message.data_type == "text":
@@ -139,6 +156,7 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
             model=self.tts_model,
             input=text,
             response_format=self.pcm_response_format,
+            voice=self.tts_voice,
             **self.tts_gen_config
         )
         # if not isinstance(response, HttpxBinaryResponseContent):
@@ -152,6 +170,7 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
             model=self.tts_model,
             input=text,
             response_format=self.pcm_response_format,
+            voice=self.tts_voice,
             **self.tts_gen_config
         ) as response:
             # if not isinstance(response, AsyncResponseContextManager[AsyncStreamedBinaryAPIResponse]):

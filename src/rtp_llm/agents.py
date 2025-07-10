@@ -55,6 +55,18 @@ class VoiceAgent:
         return self.__history_manager
     
 
+    def update_stt_config(self, config: Dict[str, Any]):
+        """
+        Update the stt_provider config.
+        """
+        self.stt_provider.stt_gen_config = self.stt_provider.validate_stt_config(config)
+    
+    def update_tts_config(self, config: Dict[str, Any]):
+        """
+        Update the tts_provider config.
+        """
+        self.tts_provider.tts_gen_config = self.tts_provider.validate_tts_config(config)
+    
     async def _stt(self, 
                    audio: bytes, 
                    stream: bool = False,

@@ -32,6 +32,14 @@ class BaseTTSProvider(ABC):
         self.pcm_response_format = pcm_response_format
         self.response_sample_rate = response_sample_rate
         self.tts_gen_config = gen_config or {}
+    
+
+    @abstractmethod
+    def validate_tts_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        invalidate wrong params from config, return only valid
+        """
+        return config
 
 
     @abstractmethod
@@ -63,6 +71,14 @@ class BaseSTTProvider(ABC):
                  **kwargs):
         self.system_prompt = system_prompt
         self.stt_gen_config = gen_config or {}
+
+    @abstractmethod
+    def validate_stt_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        invalidate wrong params from config, return only valid
+        """
+        return config
+
 
     @abstractmethod
     async def format(self, message: Message) -> Any:

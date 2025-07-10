@@ -4,7 +4,7 @@ from google import genai
 from google.genai import types
 from typing import Optional, Any, List, AsyncGenerator, Dict
 
-
+valid_stt_config = {"temperature", "top_p", "top_k"}
 
 
 class GeminiSTTProvider(BaseSTTProvider):
@@ -31,6 +31,12 @@ class GeminiSTTProvider(BaseSTTProvider):
                 api_key=self.api_key, 
                 http_options=types.HttpOptions(base_url=self.base_url)
             )
+    
+    def validate_stt_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        invalidate wrong params from config, return only valid params
+        """
+        return {k: v for k, v in config.items() if k in valid_stt_config}
         
     async def format(self, message: Message) -> Any:
         if message.data_type == "text":

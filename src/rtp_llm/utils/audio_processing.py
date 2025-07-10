@@ -52,52 +52,34 @@ async def pcm2opus(pcm16: bytes, sample_rate: int = 8000) -> bytes:
     encoder = opuslib.Encoder(sample_rate, channels=1)
     return encoder.encode(pcm16, frame_size=sample_rate//50)
 
+async def resample_pcm16(pcm16: bytes, original_sample_rate: int, target_sample_rate: int) -> bytes:
+    """resample pcm16 to target sample rate,
+    pcm16 are even length bytes!
+    """
+    g = gcd(original_sample_rate, target_sample_rate) # greatest common divisor
+    up = target_sample_rate // g # upsampling factor
+    down = original_sample_rate // g # downsampling factor
 
+    if not pcm16:
+        logger.debug("No valid audio data, returning empty bytes")
+        return b''
 
-class StreamingResample:
-
-    def __init__(self, original_sample_rate: int, target_sample_rate: int):
-        g = gcd(original_sample_rate, target_sample_rate)
-        self.up = target_sample_rate // g
-        self.down = original_sample_rate // g
-        # self.zi = None # not used
-        self.buffer = b''
-    
-    async def resample_pcm16(self, pcm16: bytes):
-        
-
-        if self.buffer:
-            logger.debug(f"Joining buffer with pcm16, buffer length: {len(self.buffer)}")
-            pcm16 = self.buffer + pcm16
-            self.buffer = b''
-
-        if len(pcm16) % 2 != 0:
-            logger.debug(f"Input pcm16 length is not even ({len(pcm16)}), appending to deque")
-            self.buffer += pcm16[-1:]
-            pcm16 = pcm16[:-1]
-        
-        
-        if not pcm16:
-            logger.debug("No valid audio data, returning empty bytes")
-            return b''
-
-        pcm16_array = np.frombuffer(pcm16, dtype=np.int16)
-        pcm16_array = pcm16_array.astype(np.float32) / 32768.0 # convert and normalize to [-1, 1]
-        out = resample_poly(
-            pcm16_array, 
-            self.up, 
-            self.down, 
-            padtype='line', 
-            axis=0, 
-            window=('kaiser', 14)
-            )
-        if isinstance(out, np.ndarray):
-            out_i16 = (out.clip(-1, 1) * 32767).astype(np.int16) # convert back to int16
-            return out_i16.tobytes()
-        else:
-            logger.warning("Resampled output is not a numpy array, returning empty bytes")
-            return b''
-
+    pcm16_array = np.frombuffer(pcm16, dtype=np.int16)
+    pcm16_array = pcm16_array.astype(np.float32) / 32768.0 # convert and normalize to [-1, 1]
+    out = resample_poly(
+        pcm16_array, 
+        up, 
+        down, 
+        padtype='line', 
+        axis=0, 
+        window=('kaiser', 14)
+        )
+    if isinstance(out, np.ndarray):
+        out_i16 = (out.clip(-1, 1) * 32767).astype(np.int16) # convert back to int16
+        return out_i16.tobytes()
+    else:
+        logger.warning("Resampled output is not a numpy array, returning empty bytes")
+        return b''
 
 async def ulaw2pcm(ulaw: bytes) -> bytes:
     """convert ulaw to pcm16 using audioop"""
