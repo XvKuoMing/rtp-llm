@@ -190,6 +190,13 @@ class RTPAdapter(Adapter):
         self.__ssrc = int(time.time() * 1000) & 0xFFFFFFFF  # Use timestamp as SSRC
         self.__sequence_number = 0
         self.__timestamp = 0
+    
+    @property
+    def peer_is_configured(self) -> bool:
+        """
+        check if the peer is configured
+        """
+        return self.peer_ip is not None and self.peer_port is not None
 
     async def send_audio(self, audio: bytes) -> None:
         """

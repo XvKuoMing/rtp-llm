@@ -20,6 +20,7 @@ from . import providers
 from . import vad
 from . import utils
 from . import adapters
+from . import callbacks
 
 __all__ = [
     "VoiceAgent",
@@ -32,4 +33,5 @@ __all__ = [
     "vad",
     "utils",
     "adapters",
+    "callbacks",
 ] 

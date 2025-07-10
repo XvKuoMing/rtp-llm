@@ -11,6 +11,7 @@ from .agents import VoiceAgent
 from .vad import BaseVAD
 from .utils.audio_processing import pcm2wav, resample_pcm16, adjust_volume_pcm16
 from .audio_logger import AudioLogger
+from .callbacks import BaseCallback, NullCallback
 from typing import Optional, Dict, Any
 import time
 import uuid
@@ -38,6 +39,7 @@ class Server:
         self.flow_manager = flow_manager
         self.vad = vad
         self.agent = agent
+        # self.callback = callback or NullCallback()
 
         self.vad_interval = int((self.adapter.sample_rate * 2) * vad_interval) # NOTE: 500ms, do not recommend to change
         if self.vad_interval < self.vad.min_speech_duration_ms:
@@ -46,14 +48,18 @@ class Server:
             logger.warning(f"Min speech duration might be too high for given vad interval, consider increasing vad interval or decreasing min speech duration")
 
         # state management
-        self.max_wait_time = max_wait_time
         self.last_response_time = None
         self.processed_seconds = 0
         self.speaking: Optional[asyncio.Task]= None
+        self.uid: Optional[int | str] = None
+        self.callback: Optional[BaseCallback] = None
+
+        # static state management
         self.answer_lock = asyncio.Lock()
 
-
+        # some params
         self.volume = 1.0 # default volume
+        self.max_wait_time = max_wait_time
     
     def update_agent_config(
             self,
@@ -78,6 +84,7 @@ class Server:
                   tts_gen_config: Optional[Dict[str, Any]] = None,
                   stt_gen_config: Optional[Dict[str, Any]] = None,
                   volume: float = 1.0,
+                  callback: Optional[BaseCallback] = None,
                   ):
         """
         run the server
@@ -95,67 +102,73 @@ class Server:
 
         # Handle first message outside the main loop
         if self.last_response_time is None:
-            self.last_response_time = time.time()
+            self.last_response_time = time.time() # re-initialize last response time
 
-        uid = uid or str(uuid.uuid4())
+        self.uid = uid or str(uuid.uuid4())
+        self.callback = callback or NullCallback()
         self.audio_logger = AudioLogger(
-            uid=uid, 
+            uid=self.uid, 
             sample_rate=self.adapter.sample_rate)
         
         if first_message is not None and self.adapter.peer_is_configured:
             logger.info(f"Speaking first message: {first_message}")
             self.speaking = asyncio.create_task(self.speak(first_message))
             first_message = None
+        
+
+        asyncio.create_task(self.callback.on_start(self.uid)) # fire and forget
 
         while True:
-            audio = await self.adapter.receive_audio() # produces pcm16
-            if audio is None:
-                # Small delay to prevent busy waiting when no audio is received
-                await asyncio.sleep(0.01)  # 10ms delay
-                continue
-
-            async with self.answer_lock:
-                is_speaking = self.speaking is not None and not self.speaking.done()
-                if is_speaking:
-                    # saving user audio while speaking ## NOTE: as for now simply discard
-                    # await self.audio_buffer.add_frame(audio)
-                    # await self.audio_logger.log_user(audio)
+            try:
+                audio = await self.adapter.receive_audio() # produces pcm16
+                if audio is None:
+                    # Small delay to prevent busy waiting when no audio is received
+                    await asyncio.sleep(0.01)  # 10ms delay
                     continue
 
-                if first_message and self.adapter.peer_is_configured:
-                    logger.info(f"Speaking first message: {first_message}")
-                    self.speaking = asyncio.create_task(self.speak(first_message))
-                    first_message = None
-                    continue
+                async with self.answer_lock:
+                    is_speaking = self.speaking is not None and not self.speaking.done()
 
-                await self.audio_buffer.add_frame(audio)
-                await self.audio_logger.log_user(audio)
+                    if first_message and self.adapter.peer_is_configured:
+                        logger.info(f"Speaking first message: {first_message}")
+                        self.speaking = asyncio.create_task(self.speak(first_message))
+                        first_message = None
+                        continue
 
-                buffer_audio = await self.audio_buffer.get_frames()
-                # last_second = self.adapter.sample_rate * 2 # 2 bytes per sample for pcm16
-                # last_second = (self.adapter.sample_rate * 2) // 2 #NOTE: 500ms
-                if len(buffer_audio) < self.processed_seconds + self.vad_interval: # ensure to not check the same second multiple times
-                    continue
-                if is_speaking:
-                    continue
-                last_chunk_audio = buffer_audio[self.processed_seconds:self.processed_seconds + self.vad_interval] # cutting last second of audio
-                self.processed_seconds += self.vad_interval
+                    await self.audio_buffer.add_frame(audio)
+                    await self.audio_logger.log_user(audio)
 
-                vad_state = await self.vad.detect(last_chunk_audio)
+                    buffer_audio = await self.audio_buffer.get_frames()
+                    if len(buffer_audio) < self.processed_seconds + self.vad_interval: # ensure to not check the same second multiple times
+                        continue
+                    if is_speaking and not allow_interruptions:
+                        #NOTE: user speech will be saved in the buffer
+                        continue
+                    last_chunk_audio = buffer_audio[self.processed_seconds:self.processed_seconds + self.vad_interval] # cutting last second of audio
+                    self.processed_seconds += self.vad_interval
 
-                max_time_reached = self.max_wait_time > 0 and (time.time() - self.last_response_time) > self.max_wait_time
-                need_run_agent = await self.flow_manager.run_agent(vad_state)
+                    vad_state = await self.vad.detect(last_chunk_audio)
 
-                if max_time_reached or need_run_agent:
-                    if need_run_agent:
-                        await self.audio_logger.beep() # NOTE: this is a hack to make the user aware that the agent started answering
-                    logger.info(f"Answering to the user; max_time_reached: {max_time_reached}, need_run_agent: {need_run_agent}")
-                    self.speaking = asyncio.create_task(self.answer(buffer_audio))
-                    self.flow_manager.reset()
-                    self.audio_buffer.clear()
-                    self.processed_seconds = 0
-                else:
-                    pass # later, we will implement silence sending
+                    max_time_reached = self.max_wait_time > 0 and (time.time() - self.last_response_time) > self.max_wait_time
+                    need_run_agent = await self.flow_manager.run_agent(vad_state)
+
+                    if max_time_reached or need_run_agent:
+                        if need_run_agent:
+                            await self.audio_logger.beep() # NOTE: this is a hack to make the user aware that the agent started answering
+                        if is_speaking:
+                            # allowing interruptions
+                            self.speaking.cancel()
+                        logger.info(f"Answering to the user; max_time_reached: {max_time_reached}, need_run_agent: {need_run_agent}")
+                        self.speaking = asyncio.create_task(self.answer(buffer_audio))
+                        self.flow_manager.reset()
+                        self.audio_buffer.clear()
+                        self.processed_seconds = 0
+                    else:
+                        pass # later, we will implement silence sending
+            except Exception as e:
+                logger.error(f"Error in server loop: {e}")
+                asyncio.create_task(self.callback.on_error(self.uid, e)) # fire and forget
+                raise e
     
     async def answer(self, audio: bytes):
         """
@@ -163,6 +176,7 @@ class Server:
         """
         try:
             wav_audio = await pcm2wav(audio, sample_rate=self.adapter.sample_rate)
+
             logger.info(f"Converted to wav, {len(wav_audio)} bytes")
             response = await self.agent.stt(
                 audio=wav_audio,
@@ -170,47 +184,47 @@ class Server:
                 enable_history=True,
             )
             logger.info(f"STT response: {response}")
+            asyncio.create_task(self.callback.on_stt(self.uid, response)) # fire and forget
+
             await self.speak(response)
+            asyncio.create_task(self.callback.on_tts(self.uid, response)) # fire and forget
         except Exception as e:
             logger.error(f"Error answering audio: {e}")
             return None
     
-
     async def speak(self, text: str):
         """
         speak the text
         """
-        speech = await self.agent.tts(
-            text=text,
-            stream=True,
-        ) # MUST PRODUCE PCM16 AS STATED IN THE DOCS
-        logger.info(f"Generated speech for: {text}" if speech else "No speech generated")
-
+        coro = self._speak()
+        await self.agent.tts_stream_to(text, coro, try_backup=True)
+        logger.info(f"Finished speaking")
+        await self.audio_logger.save()
+        self.last_response_time = time.time()
+    
+    async def _speak(self):
         chunk_count = 0
         total_bytes = 0
-        
         buffer = b''
-        async for chunk in speech:
+        while True:
+            pcm16_chunk = yield
             chunk_count += 1
-            total_bytes += len(chunk)
-
+            total_bytes += len(pcm16_chunk)
 
             if buffer:
                 logger.debug(f"Joining buffer with pcm16, buffer length: {len(buffer)}")
-                chunk = buffer + chunk
+                pcm16_chunk = buffer + pcm16_chunk
                 buffer = b''
-
-            if len(chunk) % 2 != 0:
-                logger.debug(f"Input pcm16 length is not even ({len(chunk)}), appending to deque")
-                buffer += chunk[-1:]
-                chunk = chunk[:-1]
-
+            if len(pcm16_chunk) % 2 != 0:
+                logger.debug(f"Input pcm16 length is not even ({len(pcm16_chunk)}), appending to deque")
+                buffer += pcm16_chunk[-1:]
+                pcm16_chunk = pcm16_chunk[:-1]
 
             logger.debug(f"Sending chunk {chunk_count} of {total_bytes} bytes")
             if self.agent.tts_provider.response_sample_rate != self.adapter.sample_rate:
                 logger.debug(f"Resampling audio from {self.agent.tts_provider.response_sample_rate}Hz to {self.adapter.sample_rate}Hz")
-                chunk = await resample_pcm16(
-                    pcm16=chunk,
+                pcm16_chunk = await resample_pcm16(
+                    pcm16=pcm16_chunk,
                     original_sample_rate=self.agent.tts_provider.response_sample_rate,
                     target_sample_rate=self.adapter.sample_rate,
                 )
@@ -218,18 +232,13 @@ class Server:
             # Apply volume adjustment
             if self.volume != 1.0:
                 logger.debug(f"Applying volume adjustment: {self.volume}")
-                chunk = await adjust_volume_pcm16(
-                    pcm16=chunk,
+                pcm16_chunk = await adjust_volume_pcm16(
+                    pcm16=pcm16_chunk,
                     volume_factor=self.volume,
                 )
 
-            await self.adapter.send_audio(chunk)
-            await self.audio_logger.log_ai(chunk)
-
-        logger.info(f"Finished speaking: {chunk_count} chunks, total {total_bytes} bytes")
-        await self.audio_logger.save()
-        self.last_response_time = time.time()
-        
+            await self.adapter.send_audio(pcm16_chunk)
+            await self.audio_logger.log_ai(pcm16_chunk)        
 
     def close(self):
         logger.info("Closing server")
@@ -240,6 +249,10 @@ class Server:
         self.speaking = None
         self.processed_seconds = 0
         self.last_response_time = None
+        if self.uid is not None and self.callback is not None:
+            asyncio.create_task(self.callback.on_finish(self.uid)) # fire and forget
+            self.uid = None
+            self.callback = None
 
 
 

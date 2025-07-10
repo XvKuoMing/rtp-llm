@@ -161,6 +161,7 @@ async def adjust_volume_pcm16(pcm16: bytes, volume_factor: float) -> bytes:
         pcm16_array = np.frombuffer(pcm16, dtype=np.int16)
         
         # Convert to float32 and normalize to [-1, 1] range
+        # Use 32768.0 for consistent normalization (handles -32768 correctly)
         audio_float = pcm16_array.astype(np.float32) / 32768.0
         
         # Apply volume adjustment
@@ -169,8 +170,10 @@ async def adjust_volume_pcm16(pcm16: bytes, volume_factor: float) -> bytes:
         # Clip to prevent overflow and distortion
         audio_float = np.clip(audio_float, -1.0, 1.0)
         
-        # Convert back to int16
-        pcm16_adjusted = (audio_float * 32767).astype(np.int16)
+        # Convert back to int16 with proper scaling
+        # Multiply by 32768.0 and then clip to valid int16 range
+        audio_scaled = audio_float * 32768.0
+        pcm16_adjusted = np.clip(audio_scaled, -32768, 32767).astype(np.int16)
         
         logger.debug(f"Adjusted volume by factor {volume_factor} for {len(pcm16)} bytes of audio")
         return pcm16_adjusted.tobytes()

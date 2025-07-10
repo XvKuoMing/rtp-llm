@@ -19,6 +19,7 @@ from rtp_llm.history import ChatHistoryLimiter
 from rtp_llm.vad import WebRTCVAD, SileroVAD
 from rtp_llm.providers import OpenAIProvider, AstLLmProvider, GeminiSTTProvider
 from rtp_llm.agents import VoiceAgent
+from rtp_llm.callbacks import RestCallback, BaseCallback
 
 # Configure logging
 logging.basicConfig(
@@ -312,6 +313,7 @@ class SingletonServer(Server):
                   tts_gen_config: Optional[Dict[str, Any]] = None,
                   stt_gen_config: Optional[Dict[str, Any]] = None,
                   tts_volume: Optional[float] = 1.0,
+                  callback: Optional[BaseCallback] = None,
                   ):
         try:
             self._task = asyncio.create_task(super().run(
@@ -323,6 +325,7 @@ class SingletonServer(Server):
                 tts_gen_config=tts_gen_config,
                 stt_gen_config=stt_gen_config,
                 volume=tts_volume,
+                callback=callback,
             ))
         except Exception as e:
             logger.error(f"Error running server: {e}")
@@ -347,6 +350,16 @@ class APIResponse(BaseModel):
     timestamp: datetime
     data: dict = {}
 
+
+class Callback(BaseModel):
+    base_url: str
+    on_stt_endpoint: Optional[str] = None
+    on_tts_endpoint: Optional[str] = None
+    on_start_endpoint: Optional[str] = None
+    on_error_endpoint: Optional[str] = None
+    on_finish_endpoint: Optional[str] = None
+
+
 class StartRTPRequest(BaseModel):
     peer_ip: Optional[str] = None
     peer_port: Optional[int] = None
@@ -359,6 +372,7 @@ class StartRTPRequest(BaseModel):
     uid: Optional[int | str] = None
     tts_gen_config: Optional[Dict[str, Any]] = None
     stt_gen_config: Optional[Dict[str, Any]] = None
+    callback: Optional[Callback] = None
 
 
 class StopRTPRequest(BaseModel):
@@ -393,6 +407,16 @@ async def start(request: StartRTPRequest):
             target_sample_rate=request.target_sample_rate,
         )
 
+        if request.callback:
+            callback = RestCallback(
+                base_url=request.callback.base_url,
+                on_stt_endpoint=request.callback.on_stt_endpoint,
+                on_tts_endpoint=request.callback.on_tts_endpoint,
+                on_start_endpoint=request.callback.on_start_endpoint,
+            )
+        else:
+            callback = request.callback
+
         await server.run(
             first_message=request.first_message,
             uid=request.uid,
@@ -402,6 +426,7 @@ async def start(request: StartRTPRequest):
             tts_gen_config=request.tts_gen_config,
             stt_gen_config=request.stt_gen_config,
             tts_volume=request.tts_volume,
+            callback=callback,
         )
         
         return APIResponse(

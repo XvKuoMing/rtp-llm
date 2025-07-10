@@ -7,18 +7,11 @@ class Adapter:
     """
 
     @abstractmethod
-    def __init__(self, 
-                 host_ip: str, 
-                 host_port: int, 
-                 peer_ip: Optional[str] = None, 
-                 peer_port: Optional[int] = None, 
+    def __init__(self,  
+                 *args,
                  sample_rate: int = 8000,
                  target_codec: str | int = "pcm",
                  **kwargs):
-        self.host_ip = host_ip
-        self.host_port = host_port
-        self.peer_ip = peer_ip
-        self.peer_port = peer_port
         self.sample_rate = sample_rate
         self.target_codec = target_codec
 
@@ -27,7 +20,7 @@ class Adapter:
         """
         check if the peer is configured
         """
-        return self.peer_ip is not None and self.peer_port is not None
+        pass
 
     @abstractmethod
     async def send_audio(self, audio_pcm16: bytes) -> None:

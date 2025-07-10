@@ -1,6 +1,6 @@
 from .providers import Message, BaseSTTProvider, BaseTTSProvider
 from .history import BaseChatHistory
-from typing import List, AsyncGenerator, Optional, Any, Awaitable, Dict
+from typing import List, AsyncGenerator, Optional, Any, Awaitable, Dict, AsyncGenerator
 import logging
 
 logger = logging.getLogger(__name__)
@@ -211,4 +211,32 @@ class VoiceAgent:
                                             self._tts_backup, 
                                             text=text, 
                                             stream=stream)
+    
+
+    async def tts_stream_to(self, text, coro: AsyncGenerator[bytes, None], try_backup: bool = True):
+        """
+        Convert text to audio using the tts_provider.
+        If the primary provider fails, the agent will switch to the first available backup provider.
+        uses coro to stream generated audio to it;
+        coro must accept pcm16 chunks as bytes and output None
+        """
+        # init coro
+        coro = await coro.asend(None)
+
+        speech = await self.tts(text=text, stream=True)
+        try:
+            async for chunk in speech:
+                await coro.asend(chunk)
+        except StopAsyncIteration:
+            pass
+        except Exception as e:
+            logger.error(f"Error while streaming tts to {coro}: {e}")
+            if try_backup:
+                await self._tts_backup(text=text, stream=True)
+            else:
+                raise e
+        finally:
+            await coro.aclose()
+
+       
     
