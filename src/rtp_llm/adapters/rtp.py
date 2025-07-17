@@ -205,6 +205,9 @@ class RTPAdapter(Adapter):
         if self.peer_ip is None or self.peer_port is None:
             logger.warning("Peer IP and port are not set, skipping send")
             return
+        if self.socket is None or self.socket.fileno() == -1:
+            logger.error("Socket is closed, skipping send")
+            return
         
         # Convert to target codec if necessary
         if self.target_codec != AudioCodec.PCM:
