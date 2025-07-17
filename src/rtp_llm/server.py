@@ -184,10 +184,11 @@ class Server:
                 enable_history=True,
             )
             logger.info(f"STT response: {response}")
-            asyncio.create_task(self.callback.on_stt(self.uid, response)) # fire and forget
-
-            await self.speak(response)
-            asyncio.create_task(self.callback.on_tts(self.uid, response)) # fire and forget
+            response_transformation = await self.callback.on_response(self.uid, response)
+            speech_text = response_transformation.text if response_transformation.text else response
+            await self.speak(speech_text)
+            if response_transformation.post_action:
+                await response_transformation.post_action()
         except Exception as e:
             logger.error(f"Error answering audio: {e}")
             return None

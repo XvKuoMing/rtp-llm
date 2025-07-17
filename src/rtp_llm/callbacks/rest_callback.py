@@ -1,12 +1,18 @@
-from .base import BaseCallback
+from .base import BaseCallback, ResponseTransformation
 from typing import Optional
 import logging
 import httpx
+from pydantic import BaseModel, ValidationError
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
+
+
+class ResponseTransformationRequest(BaseModel):
+    text: Optional[str] = None
+    post_action_endpoint: Optional[str] = None # must be endpoint that returns nothing and uses post method that accepts uid as a parameter
 
 class RestCallback(BaseCallback):
     """
@@ -15,30 +21,26 @@ class RestCallback(BaseCallback):
     """    
     def __init__(self, 
                  base_url: str,
-                 on_stt_endpoint: Optional[str] = None,
-                 on_tts_endpoint: Optional[str] = None,
+                 on_response_endpoint: Optional[str] = None,
                  on_start_endpoint: Optional[str] = None,
                  on_error_endpoint: Optional[str] = None,
                  on_finish_endpoint: Optional[str] = None,
                  **kwargs):
         
         self.base_url = base_url
-        self.on_stt_endpoint = on_stt_endpoint
-        self.on_tts_endpoint = on_tts_endpoint
+        self.on_response_endpoint = on_response_endpoint
         self.on_start_endpoint = on_start_endpoint
         self.on_error_endpoint = on_error_endpoint
         self.on_finish_endpoint = on_finish_endpoint
 
-        if not any([self.on_stt_endpoint, 
-            self.on_tts_endpoint, 
+        if not any([self.on_response_endpoint, 
             self.on_start_endpoint, 
             self.on_error_endpoint, 
             self.on_finish_endpoint]):
             logger.warning("No endpoints were provided, this callback is useless")
 
         self.client = httpx.AsyncClient(base_url=base_url, **kwargs)
-    
-
+        
     def __create_data(self, uid: str, text: str = None) -> dict:
         data = {"uid": uid}
         if text is not None:
@@ -60,23 +62,33 @@ class RestCallback(BaseCallback):
             if self.client is None:
                 logger.warning("Client is closed, cannot make request")
                 return
-            response = await self.client.post(endpoint, json=data)
+            async with self.client as client:
+                response = await client.post(endpoint, json=data)
             response.raise_for_status()
             logger.info(f"Successfully sent callback to {endpoint}")
+            return response.json()
         except httpx.HTTPError as e:
             logger.error(f"HTTP error when calling {endpoint}: {e}")
         except Exception as e:
             logger.error(f"Unexpected error when calling {endpoint}: {e}")
 
-    async def on_stt(self, uid: str, text: str):
-        if self.on_stt_endpoint:
+    async def on_response(self, uid: str, text: str) -> Optional[ResponseTransformation]:
+        if self.on_response_endpoint:
             data = self.__create_data(uid, text)
-            await self.__make_request(self.on_stt_endpoint, data)
-
-    async def on_tts(self, uid: str, text: str):
-        if self.on_tts_endpoint:
-            data = self.__create_data(uid, text)
-            await self.__make_request(self.on_tts_endpoint, data)
+            response = await self.__make_request(self.on_response_endpoint, data)
+            try:
+                response_transformation = ResponseTransformationRequest.model_validate(response)
+                text = response_transformation.text
+                # initing coroutin
+                post_action = self.__make_request(
+                    response_transformation.post_action_endpoint, 
+                    self.__create_data(uid)
+                    )
+            except ValidationError as e:
+                logger.error(f"Invalid response from {self.on_response_endpoint}: {e}")
+                return None
+            return ResponseTransformation(text=text, post_action=post_action)
+        return None
 
     async def on_start(self, uid: str):
         if self.on_start_endpoint:
@@ -92,11 +104,4 @@ class RestCallback(BaseCallback):
         if self.on_finish_endpoint:
             data = self.__create_data(uid)
             await self.__make_request(self.on_finish_endpoint, data)
-        await self.client.aclose()
         self.client = None
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.client.aclose()

@@ -1,5 +1,11 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Coroutine, Optional, Any
 
+@dataclass(frozen=True)
+class ResponseTransformation:
+    text: Optional[str] = None # transformed text
+    post_action: Optional[Coroutine[Any, Any, None]] = None # action to be performed after tts
 
 
 class BaseCallback(ABC):
@@ -7,13 +13,8 @@ class BaseCallback(ABC):
     
 
     @abstractmethod
-    async def on_stt(self, uid: str, text: str) -> None:
+    async def on_response(self, uid: str, text: str) -> ResponseTransformation:
         pass
-
-    @abstractmethod
-    async def on_tts(self, uid: str, text: str) -> None:
-        pass
-    
 
     @abstractmethod
     async def on_start(self, uid: str) -> None:

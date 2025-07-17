@@ -19,7 +19,7 @@ from rtp_llm.history import ChatHistoryLimiter
 from rtp_llm.vad import WebRTCVAD, SileroVAD
 from rtp_llm.providers import OpenAIProvider, AstLLmProvider, GeminiSTTProvider
 from rtp_llm.agents import VoiceAgent
-from rtp_llm.callbacks import RestCallback, BaseCallback
+from rtp_llm.callbacks import RestCallback, BaseCallback, NullCallback
 
 # Configure logging
 logging.basicConfig(
@@ -353,8 +353,7 @@ class APIResponse(BaseModel):
 
 class Callback(BaseModel):
     base_url: str
-    on_stt_endpoint: Optional[str] = None
-    on_tts_endpoint: Optional[str] = None
+    on_response_endpoint: Optional[str] = None
     on_start_endpoint: Optional[str] = None
     on_error_endpoint: Optional[str] = None
     on_finish_endpoint: Optional[str] = None
@@ -410,12 +409,13 @@ async def start(request: StartRTPRequest):
         if request.callback:
             callback = RestCallback(
                 base_url=request.callback.base_url,
-                on_stt_endpoint=request.callback.on_stt_endpoint,
-                on_tts_endpoint=request.callback.on_tts_endpoint,
+                on_response_endpoint=request.callback.on_response_endpoint,
                 on_start_endpoint=request.callback.on_start_endpoint,
+                on_error_endpoint=request.callback.on_error_endpoint,
+                on_finish_endpoint=request.callback.on_finish_endpoint,
             )
         else:
-            callback = request.callback
+            callback = NullCallback()
 
         await server.run(
             first_message=request.first_message,
