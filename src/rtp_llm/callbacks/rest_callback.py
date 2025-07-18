@@ -8,8 +8,6 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-
-
 class ResponseTransformationRequest(BaseModel):
     text: Optional[str] = None
     post_action_endpoint: Optional[str] = None # must be endpoint that returns nothing and uses post method that accepts uid as a parameter
@@ -56,39 +54,72 @@ class RestCallback(BaseCallback):
             }
         }
 
-    async def __make_request(self, endpoint: str, data: dict) -> None:
+    async def __make_request(self, endpoint: str, data: dict) -> Optional[dict]:
         """Make an HTTP POST request and handle errors gracefully"""
         try:
-            if self.client is None:
-                logger.warning("Client is closed, cannot make request")
-                return
-            async with self.client as client:
-                response = await client.post(endpoint, json=data)
+            # Recreate client if it's None or closed
+            if self.client is None or self.client.is_closed:
+                logger.info("HTTP client is closed, recreating client")
+                if self.client is not None:
+                    await self.client.aclose()
+                self.client = httpx.AsyncClient(base_url=self.base_url)
+
+            response = await self.client.post(endpoint, json=data)
             response.raise_for_status()
             logger.info(f"Successfully sent callback to {endpoint}")
-            return response.json()
+            
+            # Handle empty responses
+            if response.content:
+                try:
+                    return response.json()
+                except Exception as e:
+                    logger.warning(f"Failed to parse JSON response from {endpoint}: {e}")
+                    return {}  # Return empty dict for invalid JSON, not None
+            else:
+                logger.info(f"Empty response from {endpoint}")
+                return {}  # Empty response is valid, return empty dict
+                
         except httpx.HTTPError as e:
             logger.error(f"HTTP error when calling {endpoint}: {e}")
+            return None
         except Exception as e:
             logger.error(f"Unexpected error when calling {endpoint}: {e}")
+            return None
 
-    async def on_response(self, uid: str, text: str) -> Optional[ResponseTransformation]:
+    async def on_response(self, uid: str, text: str) -> ResponseTransformation:
         if self.on_response_endpoint:
             data = self.__create_data(uid, text)
             response = await self.__make_request(self.on_response_endpoint, data)
+            
+            # Handle None response properly - return original text as fallback
+            if response is None:
+                logger.error(f"Failed to get response from {self.on_response_endpoint}, using original text")
+                return ResponseTransformation(text=text, post_action=None)
+                
             try:
                 response_transformation = ResponseTransformationRequest.model_validate(response)
-                text = response_transformation.text
-                # initing coroutin
-                post_action = self.__make_request(
-                    response_transformation.post_action_endpoint, 
-                    self.__create_data(uid)
+                
+                # Use original text if no text in response
+                result_text = response_transformation.text if response_transformation.text is not None else text
+                
+                # Fix: Handle post_action_endpoint properly
+                post_action = None
+                if response_transformation.post_action_endpoint:
+                    # Create the coroutine for post_action
+                    post_action = self.__make_request(
+                        response_transformation.post_action_endpoint, 
+                        self.__create_data(uid)
                     )
+                
+                return ResponseTransformation(text=result_text, post_action=post_action)
+                
             except ValidationError as e:
-                logger.error(f"Invalid response from {self.on_response_endpoint}: {e}")
-                return None
-            return ResponseTransformation(text=text, post_action=post_action)
-        return None
+                logger.error(f"Invalid response from {self.on_response_endpoint}: {e}, using original text")
+                # Return original text if validation fails
+                return ResponseTransformation(text=text, post_action=None)
+        
+        # If no endpoint configured, return original text unchanged
+        return ResponseTransformation(text=text, post_action=None)
 
     async def on_start(self, uid: str):
         if self.on_start_endpoint:
@@ -104,4 +135,11 @@ class RestCallback(BaseCallback):
         if self.on_finish_endpoint:
             data = self.__create_data(uid)
             await self.__make_request(self.on_finish_endpoint, data)
-        self.client = None
+            await self.close()
+
+        
+    async def close(self):
+        """Properly close the HTTP client"""
+        if self.client is not None:
+            await self.client.aclose()
+            self.client = None
