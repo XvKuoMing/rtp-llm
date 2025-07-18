@@ -188,7 +188,8 @@ class Server:
             speech_text = response_transformation.text if response_transformation.text else response
             await self.speak(speech_text)
             if response_transformation.post_action:
-                await response_transformation.post_action()
+                # await response_transformation.post_action
+                asyncio.create_task(response_transformation.post_action) # fire and forget
         except Exception as e:
             logger.error(f"Error answering audio: {e}")
             return None
