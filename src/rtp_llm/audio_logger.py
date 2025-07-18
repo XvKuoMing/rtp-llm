@@ -25,6 +25,7 @@ class AudioLogger:
         self.lock = threading.Lock()
         self.chunks: List[AudioChunk] = []
         self.start_time = None  # Track when logging started
+        self.all_chunks: List[AudioChunk] = []  # Keep all chunks ever logged
     
 
     async def log(self, audio: bytes, is_user: bool):
@@ -35,6 +36,7 @@ class AudioLogger:
         audio_chunk = AudioChunk(audio=audio, timestamp=current_time, is_user=is_user)
         with self.lock:
             self.chunks.append(audio_chunk)
+            self.all_chunks.append(audio_chunk)  # Also add to permanent history
     
     async def log_user(self, pcm16_frames: bytes):
         await self.log(pcm16_frames, is_user=True)
@@ -99,20 +101,23 @@ class AudioLogger:
     
     def _create_timeline_audio(self, chunks: List[AudioChunk]) -> bytes:
         """Create a single audio stream with proper timing and mixing for overlapping audio"""
-        if not chunks or self.start_time is None:
+        if not chunks:
             return b''
         
-        # Calculate the total duration and create a timeline
-        end_time = max(chunk.timestamp + len(chunk.audio) / (2 * self.sample_rate) for chunk in chunks)
-        total_duration = end_time - self.start_time
+        # Find the earliest and latest timestamps
+        earliest_time = min(chunk.timestamp for chunk in chunks)
+        latest_chunk = max(chunks, key=lambda c: c.timestamp + len(c.audio) / (2 * self.sample_rate))
+        end_time = latest_chunk.timestamp + len(latest_chunk.audio) / (2 * self.sample_rate)
+        
+        total_duration = end_time - earliest_time
         total_samples = int(total_duration * self.sample_rate)
         
         # Initialize timeline with silence
         timeline = [0] * total_samples
         
         for chunk in chunks:
-            # Calculate start position in the timeline
-            chunk_offset_seconds = chunk.timestamp - self.start_time
+            # Calculate start position in the timeline relative to earliest timestamp
+            chunk_offset_seconds = chunk.timestamp - earliest_time
             start_sample = int(chunk_offset_seconds * self.sample_rate)
             
             # Convert chunk audio to samples
@@ -131,47 +136,30 @@ class AudioLogger:
     async def save(self):
         """saves current state of the audio logger to a single WAV file containing mixed user and AI audio"""
         with self.lock:
-            if not self.chunks:
+            if not self.all_chunks:
                 return
                 
-            # Use a fixed filename for the user to append to same file
+            # Use a fixed filename for the user
             filename = f"{self.uid}.wav"
             filepath = os.path.join(AUDIO_LOGS_DIR, filename)
             
-            # Create mixed audio timeline
-            mixed_audio_data = self._create_timeline_audio(self.chunks)
+            # Create mixed audio timeline from ALL chunks
+            mixed_audio_data = self._create_timeline_audio(self.all_chunks)
             
             if mixed_audio_data:
-                await self._append_mixed_audio_to_wav(mixed_audio_data, filepath)
+                # Write the entire mixed audio (not append)
+                await self._write_mixed_audio_to_wav(mixed_audio_data, filepath)
             
-            # Clear chunks after saving
+            # Clear only the recent chunks, keep all_chunks for future saves
             self.chunks.clear()
     
-    async def _append_mixed_audio_to_wav(self, new_audio_data: bytes, filepath: str):
-        """Append mixed audio data to a WAV file (or create new if doesn't exist)"""
-        if not new_audio_data:
+    async def _write_mixed_audio_to_wav(self, audio_data: bytes, filepath: str):
+        """Write mixed audio data to a WAV file (overwriting existing)"""
+        if not audio_data:
             return
             
         try:
-            existing_audio_data = b''
-            
-            # Read existing audio data if file exists
-            if os.path.exists(filepath):
-                try:
-                    with wave.open(filepath, 'rb') as existing_wav:
-                        # Verify sample rate matches
-                        if existing_wav.getframerate() != self.sample_rate:
-                            print(f"Warning: Sample rate mismatch. Existing: {existing_wav.getframerate()}, Current: {self.sample_rate}")
-                        
-                        # Read all existing frames
-                        existing_audio_data = existing_wav.readframes(existing_wav.getnframes())
-                except Exception as e:
-                    print(f"Error reading existing WAV file {filepath}: {e}")
-            
-            # Combine existing and new audio data
-            combined_audio_data = existing_audio_data + new_audio_data
-            
-            # Write combined audio to file
+            # Write audio to file (overwriting existing)
             with wave.open(filepath, 'wb') as wav_file:
                 # Set WAV parameters
                 wav_file.setnchannels(1)  # Mono
@@ -179,7 +167,7 @@ class AudioLogger:
                 wav_file.setframerate(self.sample_rate)
                 
                 # Write all audio data
-                wav_file.writeframes(combined_audio_data)
+                wav_file.writeframes(audio_data)
                     
         except Exception as e:
-            print(f"Error appending audio to {filepath}: {e}")
+            print(f"Error writing audio to {filepath}: {e}")
