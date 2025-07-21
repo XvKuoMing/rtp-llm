@@ -12,6 +12,7 @@ from .vad import BaseVAD
 from .utils.audio_processing import pcm2wav, resample_pcm16, adjust_volume_pcm16
 from .audio_logger import AudioLogger
 from .callbacks import BaseCallback, NullCallback
+from .cache import BaseAudioCache, NullAudioCache
 from typing import Optional, Dict, Any
 import time
 import uuid
@@ -31,6 +32,7 @@ class Server:
                  agent: VoiceAgent,
                  max_wait_time: int = 7, # <= 0 means no max wait time
                  vad_interval: float = VAD_INTERVAL,
+                 audio_cache: BaseAudioCache = None,
                  ):
         
         # components
@@ -39,7 +41,7 @@ class Server:
         self.flow_manager = flow_manager
         self.vad = vad
         self.agent = agent
-        # self.callback = callback or NullCallback()
+        self.audio_cache = audio_cache or NullAudioCache()
 
         self.vad_interval = int((self.adapter.sample_rate * 2) * vad_interval) # NOTE: 500ms, do not recommend to change
         if self.vad_interval < self.vad.min_speech_duration_ms:
@@ -199,8 +201,18 @@ class Server:
         speak the text
         """
         coro = self._speak()
-        await self.agent.tts_stream_to(text, coro, try_backup=True)
-        logger.info(f"Finished speaking")
+
+
+
+        key = self.audio_cache.make_key(text, self.agent.tts_provider.tts_footprint)
+        cached_audio = await self.audio_cache.get(key)
+        if cached_audio:
+            logger.info(f"Using cached audio for {text}")
+            await coro.asend(None) # initialize the coroutine
+            await coro.asend(cached_audio) # send the whole cached audio
+        else:
+            await self.agent.tts_stream_to(text, coro, try_backup=True)
+            logger.info(f"Finished speaking")
         asyncio.create_task(self.audio_logger.save()) # save in background to not block the main thread
         self.last_response_time = time.time()
     

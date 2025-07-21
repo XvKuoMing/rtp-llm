@@ -95,6 +95,11 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
             raise ValueError("STT or TTS client is not set")
 
 
+    @property
+    def tts_footprint(self) -> str:
+        return f"{self.pcm_response_format}_{self.response_sample_rate}_{self.tts_voice}_{self.tts_model}"
+
+
     def validate_stt_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """
         invalidate wrong params from config, return only valid params

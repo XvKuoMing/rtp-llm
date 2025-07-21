@@ -21,6 +21,7 @@ from . import vad
 from . import utils
 from . import adapters
 from . import callbacks
+from . import cache
 
 __all__ = [
     "VoiceAgent",
@@ -34,4 +35,5 @@ __all__ = [
     "utils",
     "adapters",
     "callbacks",
+    "cache",
 ] 

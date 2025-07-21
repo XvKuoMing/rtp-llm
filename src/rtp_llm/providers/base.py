@@ -34,6 +34,14 @@ class BaseTTSProvider(ABC):
         self.tts_gen_config = gen_config or {}
     
 
+    @property
+    def tts_footprint(self) -> str:
+        """
+        A string that uniquely identifies the tts_provider.
+        """
+        return f"{self.pcm_response_format}_{self.response_sample_rate}_{str(self.tts_gen_config)}"
+    
+
     @abstractmethod
     def validate_tts_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """

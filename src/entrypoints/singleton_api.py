@@ -20,6 +20,7 @@ from rtp_llm.vad import WebRTCVAD, SileroVAD
 from rtp_llm.providers import OpenAIProvider, AstLLmProvider, GeminiSTTProvider
 from rtp_llm.agents import VoiceAgent
 from rtp_llm.callbacks import RestCallback, BaseCallback, NullCallback
+from rtp_llm.cache import InMemoryAudioCache
 
 # Configure logging
 logging.basicConfig(
@@ -277,7 +278,8 @@ class SingletonServer(Server):
                 peer_ip=peer_ip,
                 peer_port=peer_port,
                 sample_rate=target_sample_rate,
-                target_codec=target_codec
+                target_codec=target_codec,
+                audio_cache=InMemoryAudioCache()
             ),
             audio_buffer=ArrayBuffer(),
             flow_manager=CopyFlowManager(),
