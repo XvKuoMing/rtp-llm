@@ -42,6 +42,7 @@ class Server:
         self.vad = vad
         self.agent = agent
         self.audio_cache = audio_cache or NullAudioCache()
+        logger.info(f"Audio cache: {self.audio_cache.__class__.__name__}")
 
         self.vad_interval = int((self.adapter.sample_rate * 2) * vad_interval) # NOTE: 500ms, do not recommend to change
         if self.vad_interval < self.vad.min_speech_duration_ms:
@@ -201,9 +202,6 @@ class Server:
         speak the text
         """
         coro = self._speak()
-
-
-
         key = self.audio_cache.make_key(text, self.agent.tts_provider.tts_footprint)
         cached_audio = await self.audio_cache.get(key)
         if cached_audio:
@@ -213,6 +211,9 @@ class Server:
         else:
             await self.agent.tts_stream_to(text, coro, try_backup=True)
             logger.info(f"Finished speaking")
+            ai_pcm16_chunks = await self.audio_logger.get_last_ai_chunks()
+            await self.audio_cache.set(key, ai_pcm16_chunks)
+            logger.info(f"Cached audio for {text}, {len(ai_pcm16_chunks)} bytes")
         asyncio.create_task(self.audio_logger.save()) # save in background to not block the main thread
         self.last_response_time = time.time()
     
@@ -252,7 +253,9 @@ class Server:
                 )
 
             await self.adapter.send_audio(pcm16_chunk)
-            await self.audio_logger.log_ai(pcm16_chunk)        
+            await self.audio_logger.log_ai(pcm16_chunk)
+
+
 
     def close(self):
         logger.info("Closing server")

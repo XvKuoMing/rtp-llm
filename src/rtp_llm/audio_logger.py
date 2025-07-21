@@ -28,6 +28,14 @@ class AudioLogger:
         self.all_chunks: List[AudioChunk] = []  # Keep all chunks ever logged
     
 
+    async def get_last_ai_chunks(self) -> bytes:
+        with self.lock:
+            buffer = b''
+            for chunk in self.chunks:
+                if not chunk.is_user:
+                    buffer += chunk.audio
+            return buffer
+
     async def log(self, audio: bytes, is_user: bool):
         current_time = time.time()
         if self.start_time is None:
