@@ -278,14 +278,14 @@ class SingletonServer(Server):
                 peer_ip=peer_ip,
                 peer_port=peer_port,
                 sample_rate=target_sample_rate,
-                target_codec=target_codec,
-                audio_cache=InMemoryAudioCache()
+                target_codec=target_codec
             ),
             audio_buffer=ArrayBuffer(),
             flow_manager=CopyFlowManager(),
             vad=vad,
             agent=voice_agent,
             max_wait_time=config.max_wait_time,
+            audio_cache=InMemoryAudioCache()
         )
     
     def post_init(self, 
