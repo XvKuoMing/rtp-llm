@@ -36,9 +36,7 @@ dependencies = [
     "webrtcvad==2.0.10",
     # Conditional dependencies using environment markers # audiopp was deprecated in python 3.13
     "audioop-lts; python_version>='3.13'",
-    "python-dotenv>=1.0.0",
     "opuslib>=3.0.1",
-    "sounddevice>=0.4.6",
 ]
 
 # Optional dependencies (extras)
@@ -53,6 +51,10 @@ tests = [
 
 local = [
     "sounddevice>=0.4.6"
+]
+
+redis = [
+    "redis[hiredis]>=6.2.0"
 ]
 
 # CLI entry points
