@@ -11,6 +11,8 @@ import atexit
 from datetime import datetime
 from dataclasses import dataclass
 
+from entrypoints.config import BaseConfig, get_config_parser
+
 from rtp_llm.server import Server
 from rtp_llm.adapters import RTPAdapter
 from rtp_llm.buffer import ArrayBuffer
@@ -33,202 +35,19 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class Config:
+class Config(BaseConfig):
     # Server configuration
     host: str
     port: int
-    max_wait_time: int
-    chat_limit: int
-    vad: str
-    system_prompt: str
-    
-    # Provider selection
-    stt_providers: str
-    tts_providers: str
-    
-    # Gemini STT configuration
-    gemini_stt_api_key: Optional[str] = None
-    gemini_stt_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
-    gemini_stt_model: str = "gemini-2.0-flash"
-    
-    # OpenAI STT configuration
-    openai_stt_api_key: Optional[str] = None
-    openai_stt_base_url: str = "https://api.openai.com/v1"
-    openai_stt_model: str = "gpt-4o-mini-audio-preview"
-    
-    # OpenAI TTS configuration
-    openai_tts_api_key: Optional[str] = None
-    openai_tts_base_url: str = "https://api.openai.com/v1"
-    openai_tts_model: str = "gpt-4o-mini-tts"
-    openai_tts_pcm_response_format: str = "pcm"
-    openai_tts_response_sample_rate: int = 24000
-    openai_tts_voice: str = "alloy"
-    
-    # AST LLM STT configuration
-    ast_api_key: Optional[str] = None
-    ast_base_url: str = "https://api.openai.com/v1"
-    ast_model: str = "openai/whisper-large-v3-turbo"
-    ast_language: str = "en"
-    llm_model: str = "gpt-4o-mini-audio-preview"
-    llm_api_key: Optional[str] = None
-    llm_base_url: str = "https://api.openai.com/v1"
-    
-    # AST LLM TTS configuration
-    tts_api_key: Optional[str] = None
-    tts_base_url: str = "https://api.openai.com/v1"
-    tts_model: str = "gpt-4o-mini-tts"
-    tts_pcm_response_format: str = "pcm"
-    tts_response_sample_rate: int = 24000
-    tts_voice: str = "alloy"
 
 # Global configuration instance
 config: Optional[Config] = None
 
 
 # Global provider variables
-stt_provider = None
-tts_provider = None
-stt_backup_provider = []
-tts_backup_provider = []
+vad = None
 voice_agent = None
 
-def parse_provider_list(provider_string: str) -> List[str]:
-    """Parse provider string like 'gemini;openai' or 'gemini,openai' into list ['gemini', 'openai']"""
-    if not provider_string:
-        return []
-    # Support both semicolon and comma separators
-    if ';' in provider_string:
-        separator = ';'
-    else:
-        separator = ','
-    return [p.strip() for p in provider_string.split(separator) if p.strip()]
-
-def initialize_agent(system_prompt: Optional[str] = None, chat_limit: int = 10):
-    """Initialize STT and TTS providers based on configuration and availability"""
-    global stt_provider, tts_provider, stt_backup_provider, tts_backup_provider, voice_agent
-    
-    # Reset provider variables
-    stt_provider = None
-    tts_provider = None
-    stt_backup_provider = []
-    tts_backup_provider = []
-    
-    # Parse STT providers
-    stt_providers_list = parse_provider_list(config.stt_providers)
-    if not stt_providers_list:
-        raise ValueError("No STT providers specified")
-    
-    # Parse TTS providers  
-    tts_providers_list = parse_provider_list(config.tts_providers)
-    if not tts_providers_list:
-        raise ValueError("No TTS providers specified")
-    
-    # Initialize STT providers
-    for i, provider in enumerate(stt_providers_list):
-        provider_instance = None
-        
-        if provider == "gemini":
-            if all([config.gemini_stt_api_key, config.gemini_stt_base_url, config.gemini_stt_model]):
-                provider_instance = GeminiSTTProvider(
-                    api_key=config.gemini_stt_api_key,
-                    base_url=config.gemini_stt_base_url,
-                    model=config.gemini_stt_model,
-                    system_prompt=system_prompt or config.system_prompt
-                )
-        elif provider == "openai":
-            if all([config.openai_stt_api_key, config.openai_stt_base_url, config.openai_stt_model]):
-                provider_instance = OpenAIProvider(
-                    overwrite_stt_model_api_key=config.openai_stt_api_key,
-                    overwrite_stt_model_base_url=config.openai_stt_base_url,
-                    stt_model=config.openai_stt_model,
-                    system_prompt=system_prompt or config.system_prompt
-                )
-        elif provider == "ast_llm":
-            if all([config.ast_api_key, config.ast_base_url, config.ast_model]):
-                provider_instance = AstLLmProvider(
-                    ast_model=config.ast_model,
-                    overwrite_ast_model_api_key=config.ast_api_key,
-                    overwrite_ast_model_base_url=config.ast_base_url,
-                    language=config.ast_language,
-                    stt_model=config.llm_model,
-                    overwrite_stt_api_key=config.llm_api_key,
-                    overwrite_stt_base_url=config.llm_base_url,
-                    system_prompt=system_prompt or config.system_prompt
-                )
-        
-        if provider_instance:
-            if i == 0:  # First provider is primary
-                stt_provider = provider_instance
-            else:  # Rest are backups
-                stt_backup_provider.append(provider_instance)
-        else:
-            logger.warning(f"Failed to initialize STT provider: {provider} (missing configuration)")
-    
-    # Initialize TTS providers
-    for i, provider in enumerate(tts_providers_list):
-        provider_instance = None
-        
-        if provider == "openai":
-            if all([config.openai_tts_api_key, config.openai_tts_base_url, config.openai_tts_model]):
-                provider_instance = OpenAIProvider(
-                    overwrite_tts_model_api_key=config.openai_tts_api_key,
-                    overwrite_tts_model_base_url=config.openai_tts_base_url,
-                    tts_model=config.openai_tts_model,
-                    pcm_response_format=config.openai_tts_pcm_response_format,
-                    response_sample_rate=config.openai_tts_response_sample_rate,
-                    tts_voice=config.openai_tts_voice,
-                )
-        elif provider == "ast_llm":
-            if all([config.tts_api_key, config.tts_base_url, config.tts_model]):
-                provider_instance = OpenAIProvider(
-                    overwrite_tts_model_api_key=config.tts_api_key,
-                    overwrite_tts_model_base_url=config.tts_base_url,
-                    tts_model=config.tts_model,
-                    pcm_response_format=config.tts_pcm_response_format,
-                    response_sample_rate=config.tts_response_sample_rate,
-                    tts_voice=config.tts_voice,
-                )
-        
-        if provider_instance:
-            if i == 0:  # First provider is primary
-                tts_provider = provider_instance
-            else:  # Rest are backups
-                tts_backup_provider.append(provider_instance)
-        else:
-            logger.warning(f"Failed to initialize TTS provider: {provider} (missing configuration)")
-    
-    if stt_provider is None:
-        raise ValueError("No STT provider could be initialized")
-    logger.info(f"STT provider initialized: {type(stt_provider).__name__}")
-    
-    if tts_provider is None:
-        raise ValueError("No TTS provider could be initialized")
-    logger.info(f"TTS provider initialized: {type(tts_provider).__name__}")
-    
-    if stt_backup_provider:
-        logger.info(f"STT backup providers initialized: {[type(provider).__name__ for provider in stt_backup_provider]}")
-    else:
-        logger.warning("No STT backup provider found")
-    
-    if tts_backup_provider:
-        logger.info(f"TTS backup providers initialized: {[type(provider).__name__ for provider in tts_backup_provider]}")
-    else:
-        logger.warning("No TTS backup provider found")
-
-    # Initialize voice agent
-    try:
-        voice_agent = VoiceAgent(
-            stt_provider=stt_provider,
-            tts_provider=tts_provider,
-            history_manager=ChatHistoryLimiter(limit=chat_limit),
-            backup_stt_providers=stt_backup_provider,
-            backup_tts_providers=tts_backup_provider
-        )
-        logger.info("Voice agent initialized successfully")
-        return voice_agent
-    except Exception as e:
-        logger.error(f"Failed to initialize voice agent: {e}")
-        raise
 
 class SingletonServer(Server):
     _instance: Optional["SingletonServer"] = None
@@ -523,7 +342,7 @@ def signal_handler(signum, frame):
 
 def main():
     import uvicorn
-    parser = argparse.ArgumentParser(description="RTP LLM Singleton API Server")
+    parser = get_config_parser(description="RTP LLM Singleton API Server")
     
     # Server configuration
     parser.add_argument("--host", default="localhost", help="Host to bind to")
@@ -531,49 +350,6 @@ def main():
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     
     # Core configuration
-    parser.add_argument("--system-prompt", default="You are a helpful assistant.", help="System prompt for the agent")
-    parser.add_argument("--vad", choices=["webrtc", "silero"], default="webrtc", help="VAD type to use")
-    parser.add_argument("--max-wait-time", type=int, default=5, help="Maximum wait time for response")
-    parser.add_argument("--chat-limit", type=int, default=10, help="Chat history limit")
-    
-    # Provider configuration
-    parser.add_argument("--stt-providers", required=True, help="STT providers in priority order (e.g., 'gemini;openai')")
-    parser.add_argument("--tts-providers", required=True, help="TTS providers in priority order (e.g., 'openai')")
-    
-    # Gemini STT configuration
-    parser.add_argument("--gemini-stt-api-key", help="Gemini STT API key")
-    parser.add_argument("--gemini-stt-base-url", default="https://generativelanguage.googleapis.com/v1beta", help="Gemini STT base URL")
-    parser.add_argument("--gemini-stt-model", default="gemini-2.0-flash", help="Gemini STT model")
-    
-    # OpenAI STT configuration
-    parser.add_argument("--openai-stt-api-key", help="OpenAI STT API key")
-    parser.add_argument("--openai-stt-base-url", default="https://api.openai.com/v1", help="OpenAI STT base URL")
-    parser.add_argument("--openai-stt-model", default="gpt-4o-mini-audio-preview", help="OpenAI STT model")
-    
-    # OpenAI TTS configuration
-    parser.add_argument("--openai-tts-api-key", help="OpenAI TTS API key")
-    parser.add_argument("--openai-tts-base-url", default="https://api.openai.com/v1", help="OpenAI TTS base URL")
-    parser.add_argument("--openai-tts-model", default="gpt-4o-mini-tts", help="OpenAI TTS model")
-    parser.add_argument("--openai-tts-pcm-response-format", default="pcm", help="OpenAI TTS PCM response format")
-    parser.add_argument("--openai-tts-response-sample-rate", type=int, default=24000, help="OpenAI TTS response sample rate")
-    parser.add_argument("--openai-tts-voice", default="alloy", help="OpenAI TTS voice")
-    
-    # AST LLM STT configuration  
-    parser.add_argument("--ast-api-key", help="AST API key for speech-to-text")
-    parser.add_argument("--ast-base-url", default="https://api.openai.com/v1", help="AST base URL")
-    parser.add_argument("--ast-model", default="openai/whisper-large-v3-turbo", help="AST model")
-    parser.add_argument("--ast-language", default="en", help="AST language")
-    parser.add_argument("--llm-model", default="gpt-4o-mini-audio-preview", help="LLM model for AST STT")
-    parser.add_argument("--llm-api-key", help="LLM API key for AST STT")
-    parser.add_argument("--llm-base-url", default="https://api.openai.com/v1", help="LLM base URL for AST STT")
-    
-    # AST LLM TTS configuration
-    parser.add_argument("--tts-api-key", help="TTS API key for AST LLM provider")
-    parser.add_argument("--tts-base-url", default="https://api.openai.com/v1", help="TTS base URL for AST LLM provider")
-    parser.add_argument("--tts-model", default="gpt-4o-mini-tts", help="TTS model for AST LLM provider")
-    parser.add_argument("--tts-pcm-response-format", default="pcm", help="TTS PCM response format for AST LLM provider")
-    parser.add_argument("--tts-response-sample-rate", type=int, default=24000, help="TTS response sample rate for AST LLM provider")
-    parser.add_argument("--tts-voice", default="alloy", help="TTS voice for AST LLM provider")
     
     args = parser.parse_args()
 
@@ -589,7 +365,8 @@ def main():
     atexit.register(cleanup_shutdown)
 
     # Set global config from command line arguments
-    global config
+    global config, voice_agent, vad
+    
     config = Config(
         host=args.host,
         port=args.port,
@@ -628,7 +405,9 @@ def main():
 
     # Initialize agent with the configuration
     try:
-        initialize_agent(system_prompt=config.system_prompt, chat_limit=config.chat_limit)
+        voice_agent = config.initialize_agent()
+        vad = config.initialize_vad()
+        
         SingletonServer.set_host_ip(args.host, args.port)
         
         logger.info(f"Starting API server on {args.host}:{args.port}")
