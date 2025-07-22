@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Optional, List
 import os
 import argparse
+import asyncio
 
 from rtp_llm.providers import GeminiSTTProvider, OpenAIProvider, AstLLmProvider
 from rtp_llm.history import ChatHistoryLimiter
@@ -76,14 +77,14 @@ class BaseConfig:
     redis_ttl_seconds: Optional[int] = None
     
     def initialize_redis_audio_cache(self, **redis_kwargs) -> RedisAudioCache:
-        return create_redis_audio_cache(
+        return asyncio.run(create_redis_audio_cache(
             host=self.redis_host,
             port=self.redis_port,
             db=self.redis_db,
             password=self.redis_password,
             ttl_seconds=self.redis_ttl_seconds,
             **redis_kwargs
-        )
+        ))
 
     def initialize_vad(self, min_speech_duration_ms: int = 60, **kwargs) -> BaseVAD:
         if self.vad == "webrtc":
