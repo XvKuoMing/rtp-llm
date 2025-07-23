@@ -3,6 +3,7 @@ from entrypoints.config import BaseConfig, parse_config_from_env
 from rtp_llm.agents import VoiceAgent
 from rtp_llm.vad import BaseVAD
 from rtp_llm.cache import RedisAudioCache
+from rtp_llm.server import Server
 
 from fastapi import FastAPI
 from typing import Optional, Dict, Any, Set
@@ -20,6 +21,7 @@ concurrency_limit: int = -1 # -1 for unlimited
 redis_audio_cache: Optional[RedisAudioCache] = None
 
 running_servers: Dict[str, asyncio.Task] = {}
+running_servers_instances: Dict[str, Server] = {}
 done_servers: Set[str] = set()
 
 app = FastAPI()
@@ -42,7 +44,7 @@ class RunServerParams(BaseModel):
     tts_volume: Optional[float] = 1.0
 
 class StartRTPRequest(BaseModel):
-    uid: Optional[int | str]
+    uid: int | str
     host_ip: str
     host_port: int
     peer_ip: Optional[str] = None
@@ -83,13 +85,14 @@ async def start(request: StartRTPRequest):
             callback=request.callback,
         ))
         running_servers[request.uid] = task
+        running_servers_instances[request.uid] = server
         return {"message": "Server started"}
     except Exception as e:
         logger.error(f"Error starting server: {e}")
         return {"message": "Error starting server"}
 
 class StopRTPRequest(BaseModel):
-    uid: Optional[int | str]
+    uid: int | str
 
 
 @app.post("/stop")
@@ -102,6 +105,28 @@ async def stop(request: StopRTPRequest):
         done_servers.add(request.uid)
         return {"message": "Server stopped"}
     return {"message": "Server not found"}
+
+
+class UpdateRTPRequest(BaseModel):
+    uid: int | str
+    system_prompt: Optional[str] = None
+    
+
+@app.post("/update")
+async def update(request: UpdateRTPRequest):
+    if not request.uid in running_servers_instances:
+        return {"message": "Server not found"}
+    
+    server = running_servers_instances[request.uid]
+    if request.system_prompt:
+        server.agent.stt_provider.system_prompt = request.system_prompt
+    return {"message": "updated"}
+
+
+class StatusResponse(BaseModel):
+    running_servers: int
+    done_servers: int
+    free_to_accept: bool
 
 
 @app.get("/status")
