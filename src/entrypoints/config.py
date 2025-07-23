@@ -330,8 +330,12 @@ def parse_config_from_env(config: Optional[BaseConfig] = None):
     if config is None:
         config = BaseConfig()
 
-    config.max_wait_time = int(os.getenv("MAX_WAIT_TIME", config.max_wait_time))
-    config.chat_limit = int(os.getenv("CHAT_LIMIT", config.chat_limit))
+    config.max_wait_time = os.getenv("MAX_WAIT_TIME", config.max_wait_time)
+    config.max_wait_time = int(config.max_wait_time) if config.max_wait_time else config.max_wait_time
+
+    config.chat_limit = os.getenv("CHAT_LIMIT", config.chat_limit)
+    config.chat_limit = int(config.chat_limit) if config.chat_limit else config.chat_limit
+
     config.vad = os.getenv("VAD", config.vad)
     config.system_prompt = os.getenv("SYSTEM_PROMPT", config.system_prompt)
 
@@ -350,7 +354,9 @@ def parse_config_from_env(config: Optional[BaseConfig] = None):
     config.openai_tts_base_url = os.getenv("OPENAI_TTS_BASE_URL", config.openai_tts_base_url)
     config.openai_tts_model = os.getenv("OPENAI_TTS_MODEL", config.openai_tts_model)
     config.openai_tts_pcm_response_format = os.getenv("OPENAI_TTS_PCM_RESPONSE_FORMAT", config.openai_tts_pcm_response_format)
-    config.openai_tts_response_sample_rate = int(os.getenv("OPENAI_TTS_RESPONSE_SAMPLE_RATE", config.openai_tts_response_sample_rate))
+    config.openai_tts_response_sample_rate = os.getenv("OPENAI_TTS_RESPONSE_SAMPLE_RATE", config.openai_tts_response_sample_rate)
+    config.openai_tts_response_sample_rate = int(config.openai_tts_response_sample_rate) if config.openai_tts_response_sample_rate else config.openai_tts_response_sample_rate
+
     config.openai_tts_voice = os.getenv("OPENAI_TTS_VOICE", config.openai_tts_voice)
 
     config.ast_api_key = os.getenv("AST_API_KEY", config.ast_api_key)
@@ -366,13 +372,20 @@ def parse_config_from_env(config: Optional[BaseConfig] = None):
     config.tts_base_url = os.getenv("TTS_BASE_URL", config.tts_base_url)
     config.tts_model = os.getenv("TTS_MODEL", config.tts_model)
     config.tts_pcm_response_format = os.getenv("TTS_PCM_RESPONSE_FORMAT", config.tts_pcm_response_format)
-    config.tts_response_sample_rate = int(os.getenv("TTS_RESPONSE_SAMPLE_RATE", config.tts_response_sample_rate))
+    config.tts_response_sample_rate = os.getenv("TTS_RESPONSE_SAMPLE_RATE", config.tts_response_sample_rate)
+    config.tts_response_sample_rate = int(config.tts_response_sample_rate) if config.tts_response_sample_rate else config.tts_response_sample_rate
+
     config.tts_voice = os.getenv("TTS_VOICE", config.tts_voice)
 
     config.redis_host = os.getenv("REDIS_HOST", config.redis_host)
-    config.redis_port = int(os.getenv("REDIS_PORT", config.redis_port))
-    config.redis_db = int(os.getenv("REDIS_DB", config.redis_db))
+    config.redis_port = os.getenv("REDIS_PORT", config.redis_port)
+    config.redis_port = int(config.redis_port) if config.redis_port else config.redis_port
+
+    config.redis_db = os.getenv("REDIS_DB", config.redis_db)
+    config.redis_db = int(config.redis_db) if config.redis_db else config.redis_db
+
     config.redis_password = os.getenv("REDIS_PASSWORD", config.redis_password)
-    config.redis_ttl_seconds = int(os.getenv("REDIS_TTL_SECONDS", config.redis_ttl_seconds))
+    config.redis_ttl_seconds = os.getenv("REDIS_TTL_SECONDS", config.redis_ttl_seconds)
+    config.redis_ttl_seconds = int(config.redis_ttl_seconds) if config.redis_ttl_seconds else config.redis_ttl_seconds
 
     return config
