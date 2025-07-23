@@ -131,7 +131,11 @@ class StatusResponse(BaseModel):
 
 @app.get("/status")
 async def status():
-    return {"running_servers": len(running_servers), "done_servers": len(done_servers)}
+    return StatusResponse(
+        running_servers=len(running_servers),
+        done_servers=len(done_servers),
+        free_to_accept=concurrency_limit == -1 or len(running_servers) < concurrency_limit
+    )
 
 @app.get("/ping")
 async def ping():
