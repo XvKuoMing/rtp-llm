@@ -136,6 +136,7 @@ async def stop(request: StopRTPRequest):
     if request.uid in running_servers:
         running_servers[request.uid].cancel()
         running_servers.pop(request.uid)
+        running_servers_instances.pop(request.uid)
         done_servers.add(request.uid)
         return {"message": "Server stopped"}
     return {"message": "Server not found"}
