@@ -4,9 +4,10 @@ from rtp_llm.agents import VoiceAgent
 from rtp_llm.vad import BaseVAD
 from rtp_llm.cache import RedisAudioCache
 from rtp_llm.server import Server
+from rtp_llm.adapters.rtp import RTPAdapter
 
 from fastapi import FastAPI
-from typing import Optional, Dict, Any, Set
+from typing import Optional, Dict, Any, Set, List
 import asyncio
 import os
 from pydantic import BaseModel
@@ -27,22 +28,6 @@ done_servers: Set[str] = set()
 app = FastAPI()
 
 
-class Callback(BaseModel):
-    base_url: str
-    on_response_endpoint: Optional[str] = None
-    on_start_endpoint: Optional[str] = None
-    on_error_endpoint: Optional[str] = None
-    on_finish_endpoint: Optional[str] = None
-
-
-class RunServerParams(BaseModel):
-    first_message: Optional[str] = None
-    allow_interruptions: bool = False
-    system_prompt: Optional[str] = None
-    tts_gen_config: Optional[Dict[str, Any]] = None
-    stt_gen_config: Optional[Dict[str, Any]] = None
-    tts_volume: Optional[float] = 1.0
-
 class StartRTPRequest(BaseModel):
     uid: int | str
     host_ip: str
@@ -51,8 +36,12 @@ class StartRTPRequest(BaseModel):
     peer_port: Optional[int] = None
     target_sample_rate: Optional[int] = None
     target_codec: Optional[str] = None
-    run_server_params: Optional[RunServerParams] = None
-    callback: Optional[Callback] = None
+
+
+class StartResponse(BaseModel):
+    success: bool
+    host: str
+    host: int
 
 @app.post("/start")
 async def start(request: StartRTPRequest):
@@ -74,22 +63,67 @@ async def start(request: StartRTPRequest):
             audio_cache=redis_audio_cache,
         )
 
-        task = asyncio.create_task(server.run(
-            first_message=request.run_server_params.first_message,
-            uid=request.uid,
-            allow_interruptions=request.run_server_params.allow_interruptions,
-            system_prompt=request.run_server_params.system_prompt,
-            tts_gen_config=request.run_server_params.tts_gen_config,
-            stt_gen_config=request.run_server_params.stt_gen_config,
-            tts_volume=request.run_server_params.tts_volume,
-            callback=request.callback,
-        ))
-        running_servers[request.uid] = task
         running_servers_instances[request.uid] = server
-        return {"message": "Server started"}
+        return StartResponse(success=True, host=request.host_ip, port=request.host_port)
     except Exception as e:
         logger.error(f"Error starting server: {e}")
-        return {"message": "Error starting server"}
+        return StartResponse(success=False, host=request.host_ip, port=request.host_port)
+
+class Callback(BaseModel):
+    base_url: str
+    on_response_endpoint: Optional[str] = None
+    on_start_endpoint: Optional[str] = None
+    on_error_endpoint: Optional[str] = None
+    on_finish_endpoint: Optional[str] = None
+
+
+class RunRequest(BaseModel):
+    uid: int | str
+    first_message: Optional[str] = None
+    allow_interruptions: bool = False
+    system_prompt: Optional[str] = None
+    tts_gen_config: Optional[Dict[str, Any]] = None
+    stt_gen_config: Optional[Dict[str, Any]] = None
+    tts_volume: Optional[float] = 1.0
+    callback: Optional[Callback] = None
+
+@app.post("/run")
+async def run(request: RunRequest):
+    global running_servers
+    if not request.uid in running_servers_instances:
+        return StartResponse(success=False, host="", port=0)
+    
+    server = running_servers_instances[request.uid]
+
+    if isinstance(server.adapter, RTPAdapter):
+        host = server.adapter.host_ip
+        port = server.adapter.host_port
+    else:
+        return StartResponse(success=False, host="", port=0)
+
+
+    task = asyncio.create_task(server.run(
+        first_message=request.first_message,
+        uid=request.uid,
+        allow_interruptions=request.allow_interruptions,
+        system_prompt=request.system_prompt,
+        tts_gen_config=request.tts_gen_config,
+        stt_gen_config=request.stt_gen_config,
+        tts_volume=request.tts_volume,
+        callback=request.callback,
+    ))
+
+
+    if task.done():
+        if task.exception():
+            logger.error(f"Error running server: {task.exception()}")
+        if task.cancelled():
+            logger.error(f"Server cancelled almost immediately: {task.cancelled()}")
+        return StartResponse(success=False, host=host, port=port)
+
+    running_servers[request.uid] = task
+    return StartResponse(success=True, host=host, port=port)
+
 
 class StopRTPRequest(BaseModel):
     uid: int | str
@@ -145,8 +179,20 @@ async def ping():
 
 def main():
     import uvicorn
+    import argparse
 
-    global voice_agent, vad, concurrency_limit, redis_audio_cache
+    global voice_agent, vad, concurrency_limit, redis_audio_cache, config
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--host", type=str, default="0.0.0.0")
+    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--concurrency-limit", type=int, default=-1)
+    parser.add_argument("--env_file", type=str, default=None)
+    args = parser.parse_args()
+
+    if args.env_file:
+        from dotenv import load_dotenv
+        load_dotenv(args.env_file)
 
     config = parse_config_from_env()
     
@@ -154,8 +200,15 @@ def main():
     vad = config.initialize_vad()
     redis_audio_cache = config.initialize_redis_audio_cache()
 
-    concurrency_limit = int(os.getenv("CONCURRENCY_LIMIT", -1))
-    uvicorn.run(app, host=os.getenv("HOST", "0.0.0.0"), port=int(os.getenv("PORT", 8000)))
+    concurrency_limit = os.getenv("CONCURRENCY_LIMIT", None) or args.concurrency_limit
+    concurrency_limit = int(concurrency_limit) if concurrency_limit is not None else -1
+
+    host = os.getenv("HOST", None) or args.host
+
+    port = os.getenv("PORT", None) or args.port
+    port = int(port) if port is not None else 8000
+
+    uvicorn.run(app, host=host, port=port)
 
 if __name__ == "__main__":
     main()

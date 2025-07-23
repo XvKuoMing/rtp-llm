@@ -37,6 +37,7 @@ dependencies = [
     # Conditional dependencies using environment markers # audiopp was deprecated in python 3.13
     "audioop-lts; python_version>='3.13'",
     "opuslib>=3.0.1",
+    "python-dotenv>=1.1.0",
 ]
 
 # Optional dependencies (extras)
@@ -46,7 +47,6 @@ tests = [
     "pytest>=8.4.0",
     "pytest-asyncio>=1.0.0",
     "httpx>=0.28.1",
-    "python-dotenv==1.1.0"
 ]
 
 local = [
