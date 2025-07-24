@@ -5,6 +5,7 @@ from rtp_llm.vad import BaseVAD
 from rtp_llm.cache import RedisAudioCache
 from rtp_llm.server import Server
 from rtp_llm.adapters.rtp import RTPAdapter
+from rtp_llm.callbacks.rest_callback import RestCallback
 
 from fastapi import FastAPI
 from typing import Optional, Dict, Any, Set, List, Union
@@ -184,6 +185,19 @@ async def run(request: RunRequest):
         # Create task with exception handling wrapper
         async def run_with_error_handling():
             try:
+                if request.callback:
+                    logger.info(f"Using rest callback: {request.callback}")
+                    callback = RestCallback(
+                        base_url=request.callback.base_url,
+                        on_response_endpoint=request.callback.on_response_endpoint,
+                        on_start_endpoint=request.callback.on_start_endpoint,
+                        on_error_endpoint=request.callback.on_error_endpoint,
+                        on_finish_endpoint=request.callback.on_finish_endpoint,
+                    )
+                else:
+                    # no callback configured
+                    logger.info(f"No callback configured for UID {request.uid}")
+                    callback = None
                 logger.info(f"Starting server.run() for UID {request.uid}")
                 await server.run(
                     first_message=request.first_message,
@@ -193,7 +207,7 @@ async def run(request: RunRequest):
                     tts_gen_config=request.tts_gen_config,
                     stt_gen_config=request.stt_gen_config,
                     volume=request.tts_volume,
-                    callback=request.callback,
+                    callback=callback,
                 )
             except Exception as e:
                 logger.error(f"Server.run() failed for UID {request.uid}: {e}")
