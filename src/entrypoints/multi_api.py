@@ -176,7 +176,7 @@ async def run(request: RunRequest):
             system_prompt=request.system_prompt,
             tts_gen_config=request.tts_gen_config,
             stt_gen_config=request.stt_gen_config,
-            tts_volume=request.tts_volume,
+            volume=request.tts_volume,
             callback=request.callback,
         ))
 

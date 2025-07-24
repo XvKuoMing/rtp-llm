@@ -257,7 +257,7 @@ class BaseConfig:
             flow_manager=CopyFlowManager(),
             audio_buffer=ArrayBuffer(),
             audio_cache=audio_cache,
-            voice_agent=voice_agent,
+            agent=voice_agent,
             vad=vad,
             max_wait_time=self.max_wait_time,
         )
