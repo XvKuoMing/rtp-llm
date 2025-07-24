@@ -7,31 +7,91 @@ from rtp_llm.server import Server
 from rtp_llm.adapters.rtp import RTPAdapter
 
 from fastapi import FastAPI
-from typing import Optional, Dict, Any, Set, List
+from typing import Optional, Dict, Any, Set, List, Union
 import asyncio
 import os
+import socket
 from pydantic import BaseModel
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
 config: Optional[BaseConfig] = None
 voice_agent: Optional[VoiceAgent] = None
 vad: Optional[BaseVAD] = None
+host: str = "0.0.0.0"
+start_port: int = 10000
+end_port: int = 20000
 concurrency_limit: int = -1 # -1 for unlimited
 redis_audio_cache: Optional[RedisAudioCache] = None
 
 running_servers: Dict[str, asyncio.Task] = {}
 running_servers_instances: Dict[str, Server] = {}
 done_servers: Set[str] = set()
+used_ports: Set[int] = set()
+
+# Add thread lock for port management
+port_lock = threading.Lock()
 
 app = FastAPI()
 
 
+def get_static_host_ip():
+    """Get the current OS static host IP address"""
+    return socket.gethostbyname(socket.gethostname())
+
+
+def get_available_port(uid: str) -> int:
+    """Get an available port from the range, with deterministic assignment based on UID"""
+    global used_ports
+    
+    with port_lock:  # Thread-safe port management
+        # Try to get a deterministic port based on UID hash
+        uid_hash = hash(str(uid)) % (end_port - start_port + 1)
+        preferred_port = start_port + uid_hash
+        
+        # Check if preferred port is available
+        if preferred_port not in used_ports and is_port_available(preferred_port):
+            used_ports.add(preferred_port)
+            return preferred_port
+        
+        # If preferred port is not available, find next available port
+        for port in range(start_port, end_port + 1):
+            if port not in used_ports and is_port_available(port):
+                used_ports.add(port)
+                return port
+        
+        raise RuntimeError(f"No available ports in range {start_port}-{end_port}")
+
+
+def is_port_available(port: int) -> bool:
+    """Check if a port is available for binding"""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(('', port))
+            return True
+    except OSError:
+        return False
+
+
+def release_port(port: int):
+    """Release a port back to the available pool"""
+    global used_ports
+    with port_lock:  # Thread-safe port management
+        used_ports.discard(port)
+
+
+def get_host_ip(requested_host: Optional[str] = None) -> str:
+    """Get host IP based on logic: if 0.0.0.0 use static IP, else use provided"""
+    if requested_host is None or requested_host == "0.0.0.0":
+        return get_static_host_ip()
+    return requested_host
+
+
 class StartRTPRequest(BaseModel):
-    uid: int | str
-    host_ip: str
-    host_port: int
+    uid: Union[int, str]  # Fixed type annotation
+
     peer_ip: Optional[str] = None
     peer_port: Optional[int] = None
     target_sample_rate: Optional[int] = None
@@ -41,19 +101,25 @@ class StartRTPRequest(BaseModel):
 class StartResponse(BaseModel):
     success: bool
     host: str
-    host: int
+    port: int
 
 @app.post("/start")
 async def start(request: StartRTPRequest):
-    global voice_agent, vad, running_servers
+    global voice_agent, vad, running_servers, host
 
     if concurrency_limit != -1 and len(running_servers) >= concurrency_limit:
         return {"message": "Concurrency limit reached", "status": "error"}
 
     try:
+        # Determine host IP based on logic
+        host_ip = get_host_ip(host)
+        
+        # Get available port for this UID
+        host_port = get_available_port(str(request.uid))
+        
         server = config.initialize_rtp_server(
-            host_ip=request.host_ip,
-            host_port=request.host_port,
+            host_ip=host_ip,
+            host_port=host_port,
             peer_ip=request.peer_ip,
             peer_port=request.peer_port,
             sample_rate=request.target_sample_rate,
@@ -63,11 +129,11 @@ async def start(request: StartRTPRequest):
             audio_cache=redis_audio_cache,
         )
 
-        running_servers_instances[request.uid] = server
-        return StartResponse(success=True, host=request.host_ip, port=request.host_port)
+        running_servers_instances[str(request.uid)] = server
+        return StartResponse(success=True, host=host_ip, port=host_port)
     except Exception as e:
         logger.error(f"Error starting server: {e}")
-        return StartResponse(success=False, host=request.host_ip, port=request.host_port)
+        return StartResponse(success=False, host="", port=0)
 
 class Callback(BaseModel):
     base_url: str
@@ -78,7 +144,7 @@ class Callback(BaseModel):
 
 
 class RunRequest(BaseModel):
-    uid: int | str
+    uid: Union[int, str]  # Fixed type annotation
     first_message: Optional[str] = None
     allow_interruptions: bool = False
     system_prompt: Optional[str] = None
@@ -90,69 +156,80 @@ class RunRequest(BaseModel):
 @app.post("/run")
 async def run(request: RunRequest):
     global running_servers
-    if not request.uid in running_servers_instances:
+    uid_str = str(request.uid)
+    if uid_str not in running_servers_instances:
         return StartResponse(success=False, host="", port=0)
     
-    server = running_servers_instances[request.uid]
+    server = running_servers_instances[uid_str]
 
     if isinstance(server.adapter, RTPAdapter):
-        host = server.adapter.host_ip
-        port = server.adapter.host_port
+        server_host = server.adapter.host_ip  # Fixed variable shadowing
+        server_port = server.adapter.host_port
     else:
         return StartResponse(success=False, host="", port=0)
 
+    try:
+        task = asyncio.create_task(server.run(
+            first_message=request.first_message,
+            uid=request.uid,
+            allow_interruptions=request.allow_interruptions,
+            system_prompt=request.system_prompt,
+            tts_gen_config=request.tts_gen_config,
+            stt_gen_config=request.stt_gen_config,
+            tts_volume=request.tts_volume,
+            callback=request.callback,
+        ))
 
-    task = asyncio.create_task(server.run(
-        first_message=request.first_message,
-        uid=request.uid,
-        allow_interruptions=request.allow_interruptions,
-        system_prompt=request.system_prompt,
-        tts_gen_config=request.tts_gen_config,
-        stt_gen_config=request.stt_gen_config,
-        tts_volume=request.tts_volume,
-        callback=request.callback,
-    ))
-
-
-    if task.done():
-        if task.exception():
-            logger.error(f"Error running server: {task.exception()}")
-        if task.cancelled():
-            logger.error(f"Server cancelled almost immediately: {task.cancelled()}")
-        return StartResponse(success=False, host=host, port=port)
-
-    running_servers[request.uid] = task
-    return StartResponse(success=True, host=host, port=port)
+        # Store the task immediately - don't check if done since it just started
+        running_servers[uid_str] = task
+        return StartResponse(success=True, host=server_host, port=server_port)
+        
+    except Exception as e:
+        logger.error(f"Error creating server task: {e}")
+        return StartResponse(success=False, host=server_host, port=server_port)
 
 
 class StopRTPRequest(BaseModel):
-    uid: int | str
+    uid: Union[int, str]  # Fixed type annotation
 
 
 @app.post("/stop")
 async def stop(request: StopRTPRequest):
     global running_servers, done_servers
 
-    if request.uid in running_servers:
-        running_servers[request.uid].cancel()
-        running_servers.pop(request.uid)
-        running_servers_instances.pop(request.uid)
-        done_servers.add(request.uid)
-        return {"message": "Server stopped"}
-    return {"message": "Server not found"}
+    uid_str = str(request.uid)
 
+    if uid_str not in running_servers_instances:
+        return {"message": "Server has not been started"}
+
+    server = running_servers_instances[uid_str]
+    running_servers_instances.pop(uid_str)
+    done_servers.add(uid_str)
+
+    if isinstance(server.adapter, RTPAdapter):
+        release_port(server.adapter.host_port)
+    
+    if uid_str in running_servers:
+        task = running_servers.pop(uid_str)
+        task.cancel()
+        return {"message": "Server stopped"}
+    else:
+        server.close()
+        return {"message": "Server wasn't running, simply closed"}
+    
 
 class UpdateRTPRequest(BaseModel):
-    uid: int | str
+    uid: Union[int, str]  # Fixed type annotation
     system_prompt: Optional[str] = None
     
 
 @app.post("/update")
 async def update(request: UpdateRTPRequest):
-    if not request.uid in running_servers_instances:
+    uid_str = str(request.uid)
+    if uid_str not in running_servers_instances:
         return {"message": "Server not found"}
     
-    server = running_servers_instances[request.uid]
+    server = running_servers_instances[uid_str]
     if request.system_prompt:
         server.agent.stt_provider.system_prompt = request.system_prompt
     return {"message": "updated"}
@@ -182,11 +259,13 @@ def main():
     import uvicorn
     import argparse
 
-    global voice_agent, vad, concurrency_limit, redis_audio_cache, config
+    global voice_agent, vad, concurrency_limit, redis_audio_cache, config, host, start_port, end_port
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", type=str, default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--start-port", type=int, default=10000)
+    parser.add_argument("--end-port", type=int, default=20000)
     parser.add_argument("--concurrency-limit", type=int, default=-1)
     parser.add_argument("--env_file", type=str, default=None)
     args = parser.parse_args()
@@ -205,6 +284,8 @@ def main():
     concurrency_limit = int(concurrency_limit) if concurrency_limit is not None else -1
 
     host = os.getenv("HOST", None) or args.host
+    start_port = os.getenv("START_PORT", None) or args.start_port
+    end_port = os.getenv("END_PORT", None) or args.end_port
 
     port = os.getenv("PORT", None) or args.port
     port = int(port) if port is not None else 8000
