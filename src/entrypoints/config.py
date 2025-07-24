@@ -252,7 +252,7 @@ class BaseConfig:
                 peer_ip=peer_ip,
                 peer_port=peer_port,
                 sample_rate=sample_rate,
-                codec=codec,
+                target_codec=codec,
             ),
             flow_manager=CopyFlowManager(),
             audio_buffer=ArrayBuffer(),
