@@ -15,6 +15,12 @@ from pydantic import BaseModel
 import logging
 import threading
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+)
+
 logger = logging.getLogger(__name__)
 
 config: Optional[BaseConfig] = None
@@ -107,15 +113,20 @@ class StartResponse(BaseModel):
 async def start(request: StartRTPRequest):
     global voice_agent, vad, running_servers, host
 
+    logger.info(f"Starting server for UID {request.uid}")
+
     if concurrency_limit != -1 and len(running_servers) >= concurrency_limit:
+        logger.warning(f"Concurrency limit reached ({len(running_servers)}/{concurrency_limit})")
         return {"message": "Concurrency limit reached", "status": "error"}
 
     try:
         # Determine host IP based on logic
         host_ip = get_host_ip(host)
+        logger.info(f"Using host IP: {host_ip}")
         
         # Get available port for this UID
         host_port = get_available_port(str(request.uid))
+        logger.info(f"Allocated port {host_port} for UID {request.uid}")
         
         server = config.initialize_rtp_server(
             host_ip=host_ip,
@@ -130,9 +141,10 @@ async def start(request: StartRTPRequest):
         )
 
         running_servers_instances[str(request.uid)] = server
+        logger.info(f"Server initialized successfully for UID {request.uid} at {host_ip}:{host_port}")
         return StartResponse(success=True, host=host_ip, port=host_port)
     except Exception as e:
-        logger.error(f"Error starting server: {e}")
+        logger.error(f"Error starting server for UID {request.uid}: {e}")
         return StartResponse(success=False, host="", port=0)
 
 class Callback(BaseModel):
@@ -169,23 +181,38 @@ async def run(request: RunRequest):
         return StartResponse(success=False, host="", port=0)
 
     try:
-        task = asyncio.create_task(server.run(
-            first_message=request.first_message,
-            uid=request.uid,
-            allow_interruptions=request.allow_interruptions,
-            system_prompt=request.system_prompt,
-            tts_gen_config=request.tts_gen_config,
-            stt_gen_config=request.stt_gen_config,
-            volume=request.tts_volume,
-            callback=request.callback,
-        ))
+        # Create task with exception handling wrapper
+        async def run_with_error_handling():
+            try:
+                logger.info(f"Starting server.run() for UID {request.uid}")
+                await server.run(
+                    first_message=request.first_message,
+                    uid=request.uid,
+                    allow_interruptions=request.allow_interruptions,
+                    system_prompt=request.system_prompt,
+                    tts_gen_config=request.tts_gen_config,
+                    stt_gen_config=request.stt_gen_config,
+                    volume=request.tts_volume,
+                    callback=request.callback,
+                )
+            except Exception as e:
+                logger.error(f"Server.run() failed for UID {request.uid}: {e}")
+                # Clean up on failure
+                if uid_str in running_servers:
+                    running_servers.pop(uid_str)
+                if uid_str in running_servers_instances:
+                    running_servers_instances.pop(uid_str)
+                raise
+
+        task = asyncio.create_task(run_with_error_handling())
 
         # Store the task immediately - don't check if done since it just started
         running_servers[uid_str] = task
+        logger.info(f"Server task created successfully for UID {request.uid} on {server_host}:{server_port}")
         return StartResponse(success=True, host=server_host, port=server_port)
         
     except Exception as e:
-        logger.error(f"Error creating server task: {e}")
+        logger.error(f"Error creating server task for UID {request.uid}: {e}")
         return StartResponse(success=False, host=server_host, port=server_port)
 
 
@@ -198,8 +225,10 @@ async def stop(request: StopRTPRequest):
     global running_servers, done_servers
 
     uid_str = str(request.uid)
+    logger.info(f"Stopping server for UID {request.uid}")
 
     if uid_str not in running_servers_instances:
+        logger.warning(f"Stop requested for UID {request.uid} but server was not found")
         return {"message": "Server has not been started"}
 
     server = running_servers_instances[uid_str]
@@ -207,14 +236,18 @@ async def stop(request: StopRTPRequest):
     done_servers.add(uid_str)
 
     if isinstance(server.adapter, RTPAdapter):
-        release_port(server.adapter.host_port)
+        port = server.adapter.host_port
+        release_port(port)
+        logger.info(f"Released port {port} for UID {request.uid}")
     
     if uid_str in running_servers:
         task = running_servers.pop(uid_str)
         task.cancel()
+        logger.info(f"Server task cancelled for UID {request.uid}")
         return {"message": "Server stopped"}
     else:
         server.close()
+        logger.info(f"Server closed for UID {request.uid} (wasn't running)")
         return {"message": "Server wasn't running, simply closed"}
     
 
@@ -268,17 +301,29 @@ def main():
     parser.add_argument("--end-port", type=int, default=20000)
     parser.add_argument("--concurrency-limit", type=int, default=-1)
     parser.add_argument("--env_file", type=str, default=None)
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
+
+    # Configure debug logging if requested
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+        logger.setLevel(logging.DEBUG)
 
     if args.env_file:
         from dotenv import load_dotenv
         load_dotenv(args.env_file)
 
     config = parse_config_from_env()
+    logger.info("Configuration parsed from environment")
     
     voice_agent = config.initialize_agent()
+    logger.info("Voice agent initialized")
+    
     vad = config.initialize_vad()
+    logger.info("VAD initialized")
+    
     redis_audio_cache = config.initialize_redis_audio_cache()
+    logger.info("Redis audio cache initialized")
 
     concurrency_limit = os.getenv("CONCURRENCY_LIMIT", None) or args.concurrency_limit
     concurrency_limit = int(concurrency_limit) if concurrency_limit is not None else -1
@@ -289,6 +334,13 @@ def main():
 
     port = os.getenv("PORT", None) or args.port
     port = int(port) if port is not None else 8000
+
+    logger.info(f"Starting Multi-RTP API server")
+    logger.info(f"Server host: {host}")
+    logger.info(f"Server port: {port}")
+    logger.info(f"RTP port range: {start_port}-{end_port}")
+    logger.info(f"Concurrency limit: {concurrency_limit if concurrency_limit != -1 else 'unlimited'}")
+    logger.info(f"Debug logging: {args.debug}")
 
     uvicorn.run(app, host=host, port=port)
 
