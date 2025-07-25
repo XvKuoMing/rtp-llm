@@ -88,14 +88,6 @@ def release_port(port: int):
     with port_lock:  # Thread-safe port management
         used_ports.discard(port)
 
-
-def get_host_ip(requested_host: Optional[str] = None) -> str:
-    """Get host IP based on logic: if 0.0.0.0 use static IP, else use provided"""
-    if requested_host is None or requested_host == "0.0.0.0":
-        return get_static_host_ip()
-    return requested_host
-
-
 class StartRTPRequest(BaseModel):
     uid: Union[int, str]  # Fixed type annotation
 
@@ -121,16 +113,14 @@ async def start(request: StartRTPRequest):
         return {"message": "Concurrency limit reached", "status": "error"}
 
     try:
-        # Determine host IP based on logic
-        host_ip = get_host_ip(host)
-        logger.info(f"Using host IP: {host_ip}")
+        logger.info(f"Using host IP: {host}")
         
         # Get available port for this UID
         host_port = get_available_port(str(request.uid))
         logger.info(f"Allocated port {host_port} for UID {request.uid}")
         
         server = config.initialize_rtp_server(
-            host_ip=host_ip,
+            host_ip=host,
             host_port=host_port,
             peer_ip=request.peer_ip,
             peer_port=request.peer_port,
@@ -142,8 +132,8 @@ async def start(request: StartRTPRequest):
         )
 
         running_servers_instances[str(request.uid)] = server
-        logger.info(f"Server initialized successfully for UID {request.uid} at {host_ip}:{host_port}")
-        return StartResponse(success=True, host=host_ip, port=host_port)
+        logger.info(f"Server initialized successfully for UID {request.uid} at {host}:{host_port}")
+        return StartResponse(success=True, host=host, port=host_port)
     except Exception as e:
         logger.error(f"Error starting server for UID {request.uid}: {e}")
         return StartResponse(success=False, host="", port=0)
