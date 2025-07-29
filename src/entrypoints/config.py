@@ -76,15 +76,15 @@ class BaseConfig:
     redis_password: Optional[str] = None
     redis_ttl_seconds: Optional[int] = None
     
-    def initialize_redis_audio_cache(self, **redis_kwargs) -> RedisAudioCache:
-        return asyncio.run(create_redis_audio_cache(
+    async def initialize_redis_audio_cache(self, **redis_kwargs) -> RedisAudioCache:
+        return await create_redis_audio_cache(
             host=self.redis_host,
             port=self.redis_port,
             db=self.redis_db,
             password=self.redis_password,
             ttl_seconds=self.redis_ttl_seconds,
             **redis_kwargs
-        ))
+        )
 
     def initialize_vad(self, min_speech_duration_ms: int = 60, **kwargs) -> BaseVAD:
         if self.vad == "webrtc":

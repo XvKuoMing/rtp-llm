@@ -44,6 +44,33 @@ port_lock = threading.Lock()
 app = FastAPI()
 
 
+@app.on_event("startup")
+async def startup_event():
+    """Initialize async components during FastAPI startup"""
+    global redis_audio_cache, config
+    if config is not None:
+        try:
+            redis_audio_cache = await config.initialize_redis_audio_cache()
+            logger.info("Redis audio cache initialized during startup")
+        except Exception as e:
+            logger.error(f"Failed to initialize Redis cache during startup: {e}")
+            # Fallback to in-memory cache
+            from rtp_llm.cache import InMemoryAudioCache
+            redis_audio_cache = InMemoryAudioCache()
+            logger.info("Falling back to in-memory audio cache")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up async components during FastAPI shutdown"""
+    global redis_audio_cache
+    if redis_audio_cache and hasattr(redis_audio_cache, 'close'):
+        try:
+            await redis_audio_cache.close()
+        except Exception as e:
+            logger.error(f"Error closing Redis connections: {e}")
+
+
 def get_static_host_ip():
     """Get the current OS static host IP address"""
     return socket.gethostbyname(socket.gethostname())
@@ -326,9 +353,8 @@ def main():
     vad = config.initialize_vad()
     logger.info("VAD initialized")
     
-    redis_audio_cache = config.initialize_redis_audio_cache()
-    logger.info("Redis audio cache initialized")
-
+    # Redis cache will be initialized during FastAPI startup
+    
     concurrency_limit = os.getenv("CONCURRENCY_LIMIT", None) or args.concurrency_limit
     concurrency_limit = int(concurrency_limit) if concurrency_limit is not None else -1
 

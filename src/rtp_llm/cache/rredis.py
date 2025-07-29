@@ -46,6 +46,14 @@ class RedisAudioCache(BaseAudioCache):
             logger.info("Cleared TTS cache")
         except Exception as e:
             logger.error(f"Error clearing Redis cache: {e}")
+    
+    async def close(self) -> None:
+        """Close Redis client connections properly"""
+        try:
+            await self.client.close()
+            logger.info("Redis client connections closed")
+        except Exception as e:
+            logger.error(f"Error closing Redis client: {e}")
 
 async def create_redis_audio_cache(
     host: str = "localhost", 
