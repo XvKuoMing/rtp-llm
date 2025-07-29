@@ -333,8 +333,10 @@ def main():
     concurrency_limit = int(concurrency_limit) if concurrency_limit is not None else -1
 
     host = os.getenv("HOST", None) or args.host
-    start_port = os.getenv("START_PORT", None) or args.start_port
-    end_port = os.getenv("END_PORT", None) or args.end_port
+    _start_port = os.getenv("START_PORT", None) or args.start_port
+    _end_port = os.getenv("END_PORT", None) or args.end_port
+    start_port = int(_start_port) if _start_port else 10000
+    end_port = int(_end_port) if _end_port else 20000
 
     port = os.getenv("PORT", None) or args.port
     port = int(port) if port is not None else 8000
