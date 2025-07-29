@@ -299,6 +299,102 @@ async def update(request: UpdateRTPRequest):
     return {"message": "updated"}
 
 
+class UpdateConfigRequest(BaseModel):
+    # Common Server configuration
+    max_wait_time: Optional[int] = None
+    chat_limit: Optional[int] = None
+    vad: Optional[str] = None
+    system_prompt: Optional[str] = None
+    
+    # Provider selection
+    stt_providers: Optional[str] = None
+    tts_providers: Optional[str] = None
+    
+    # Gemini STT configuration
+    gemini_stt_api_key: Optional[str] = None
+    gemini_stt_base_url: Optional[str] = None
+    gemini_stt_model: Optional[str] = None
+    
+    # OpenAI STT configuration
+    openai_stt_api_key: Optional[str] = None
+    openai_stt_base_url: Optional[str] = None
+    openai_stt_model: Optional[str] = None
+    
+    # OpenAI TTS configuration
+    openai_tts_api_key: Optional[str] = None
+    openai_tts_base_url: Optional[str] = None
+    openai_tts_model: Optional[str] = None
+    openai_tts_pcm_response_format: Optional[str] = None
+    openai_tts_response_sample_rate: Optional[int] = None
+    openai_tts_voice: Optional[str] = None
+    
+    # AST LLM STT configuration
+    ast_api_key: Optional[str] = None
+    ast_base_url: Optional[str] = None
+    ast_model: Optional[str] = None
+    ast_language: Optional[str] = None
+    llm_model: Optional[str] = None
+    llm_api_key: Optional[str] = None
+    llm_base_url: Optional[str] = None
+    
+    # AST LLM TTS configuration
+    tts_api_key: Optional[str] = None
+    tts_base_url: Optional[str] = None
+    tts_model: Optional[str] = None
+    tts_pcm_response_format: Optional[str] = None
+    tts_response_sample_rate: Optional[int] = None
+    tts_voice: Optional[str] = None
+
+
+@app.post("/update_config")
+async def update_config(request: UpdateConfigRequest):
+    global config, voice_agent, vad, redis_audio_cache
+    
+    if config is None:
+        return {"message": "Config not initialized", "status": "error"}
+    
+    try:
+        # Update config with non-None values from request
+        updated_fields = []
+        
+        for field_name, field_value in request.model_dump(exclude_none=True).items():
+            if hasattr(config, field_name):
+                setattr(config, field_name, field_value)
+                updated_fields.append(field_name)
+                logger.info(f"Updated config.{field_name} = {field_value}")
+        
+        if not updated_fields:
+            return {"message": "No valid fields to update", "status": "warning"}
+        
+        # Re-initialize VAD if VAD config changed
+        if 'vad' in updated_fields:
+            try:
+                vad = config.initialize_vad()
+                logger.info("VAD re-initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to re-initialize VAD: {e}")
+                return {"message": f"Failed to re-initialize VAD: {e}", "status": "error"}
+        
+        
+        # Re-initialize agent (always do this if any config changed)
+        try:
+            voice_agent = config.initialize_agent()
+            logger.info("Voice agent re-initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to re-initialize voice agent: {e}")
+            return {"message": f"Failed to re-initialize voice agent: {e}", "status": "error"}
+        
+        return {
+            "message": "Config updated and components re-initialized successfully", 
+            "updated_fields": updated_fields,
+            "status": "success"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error updating config: {e}")
+        return {"message": f"Error updating config: {e}", "status": "error"}
+
+
 class StatusResponse(BaseModel):
     running_servers: int
     done_servers: int

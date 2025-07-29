@@ -208,6 +208,7 @@ class Server:
             logger.info(f"Using cached audio for {text}")
             await coro.asend(None) # initialize the coroutine
             await coro.asend(cached_audio) # send the whole cached audio
+            await coro.aclose() # close the coroutine
         else:
             await self.agent.tts_stream_to(text, coro, try_backup=True)
             logger.info(f"Finished speaking")
@@ -244,6 +245,9 @@ class Server:
                     target_sample_rate=self.adapter.sample_rate,
                 )
 
+            # log without volume adjustment
+            await self.audio_logger.log_ai(pcm16_chunk)
+
             # Apply volume adjustment
             if self.volume != 1.0:
                 logger.debug(f"Applying volume adjustment: {self.volume}")
@@ -253,7 +257,7 @@ class Server:
                 )
 
             await self.adapter.send_audio(pcm16_chunk)
-            await self.audio_logger.log_ai(pcm16_chunk)
+            # await self.audio_logger.log_ai(pcm16_chunk)
 
 
 
