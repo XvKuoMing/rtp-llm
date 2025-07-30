@@ -69,6 +69,10 @@ class Server:
         # some params
         self.volume = 1.0 # default volume
         self.max_wait_time = max_wait_time
+
+
+        # internal
+        self.__last_ai_pcm16_chunks = []
     
     def update_agent_config(
             self,
@@ -221,17 +225,10 @@ class Server:
                 for chunk in cached_chunks:
                     await coro.asend(chunk)      
             else:
-                ai_pcm16_chunks = []
-                async def collect_ai_chunks():
-                    nonlocal ai_pcm16_chunks
-                    while True:
-                        pcm16_chunk = yield
-                        await coro.asend(pcm16_chunk)
-                        ai_pcm16_chunks.append(pcm16_chunk)
-                await self.agent.tts_stream_to(text, collect_ai_chunks(), try_backup=True)
+                await self.agent.tts_stream_to(text, coro, try_backup=True)
                 logger.info(f"Finished speaking")
-                await self.audio_cache.set(key, ai_pcm16_chunks)
-                logger.info(f"Cached audio for {text}, {len(ai_pcm16_chunks)} bytes")
+                await self.audio_cache.set(key, self.__last_ai_pcm16_chunks)
+                logger.info(f"Cached audio for {text}, {len(self.__last_ai_pcm16_chunks)} bytes")
         except asyncio.CancelledError:
             logger.info(f"Speech was cancelled for text: {text[:50]}...")
             
@@ -242,10 +239,13 @@ class Server:
         chunk_count = 0
         total_bytes = 0
         buffer = b''
+        self.__last_ai_pcm16_chunks = [] # reset the buffer
         while True:
             pcm16_chunk = yield
             chunk_count += 1
             total_bytes += len(pcm16_chunk)
+
+            self.__last_ai_pcm16_chunks.append(pcm16_chunk) # save raw tts chunks
 
             if buffer:
                 logger.debug(f"Joining buffer with pcm16, buffer length: {len(buffer)}")
