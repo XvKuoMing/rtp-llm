@@ -59,7 +59,6 @@ redis = [
 
 # CLI entry points
 [project.scripts]
-serve-rtp = "entrypoints.singleton_api:main"
 serve-multi-rtp = "entrypoints.multi_api:main"
 
 # Package URLs

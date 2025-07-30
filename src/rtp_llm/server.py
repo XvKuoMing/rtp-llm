@@ -44,15 +44,21 @@ class Server:
         self.audio_cache = audio_cache or NullAudioCache()
         logger.info(f"Audio cache: {self.audio_cache.__class__.__name__}")
 
-        self.vad_interval = int((self.adapter.sample_rate * 2) * vad_interval) # NOTE: 500ms, do not recommend to change
-        if self.vad_interval < self.vad.min_speech_duration_ms:
-            raise ValueError(f"VAD interval is less than min speech duration: {self.vad_interval} < {self.vad.min_speech_duration_ms}")
-        if self.vad_interval // 2 <= self.vad.min_speech_duration_ms:
-            logger.warning(f"Min speech duration might be too high for given vad interval, consider increasing vad interval or decreasing min speech duration")
+        # Convert VAD interval to samples and bytes for proper unit handling
+        self.vad_interval_samples = int(self.adapter.sample_rate * vad_interval)  # samples per interval
+        self.vad_interval_bytes = self.vad_interval_samples * 2  # bytes per interval (16-bit PCM)
+        
+        # Convert to milliseconds for comparison with VAD min duration
+        vad_interval_ms = self.vad_interval_samples * 1000 / self.adapter.sample_rate
+        
+        if vad_interval_ms < self.vad.min_speech_duration_ms:
+            raise ValueError(f"VAD interval {vad_interval_ms:.1f}ms is less than min speech duration: {self.vad.min_speech_duration_ms}ms")
+        if vad_interval_ms / 2 <= self.vad.min_speech_duration_ms:
+            logger.warning(f"Min speech duration {self.vad.min_speech_duration_ms}ms might be too high for given vad interval {vad_interval_ms:.1f}ms, consider increasing vad interval or decreasing min speech duration")
 
         # state management
         self.last_response_time = None
-        self.processed_seconds = 0
+        self.processed_bytes = 0
         self.speaking: Optional[asyncio.Task]= None
         self.uid: Optional[int | str] = None
         self.callback: Optional[BaseCallback] = None
@@ -102,11 +108,6 @@ class Server:
             stt_gen_config=stt_gen_config,
         )
 
-
-        # Handle first message outside the main loop
-        if self.last_response_time is None:
-            self.last_response_time = time.time() # re-initialize last response time
-
         self.uid = uid or str(uuid.uuid4())
         self.callback = callback or NullCallback()
         self.audio_logger = AudioLogger(
@@ -142,17 +143,19 @@ class Server:
                     await self.audio_logger.log_user(audio)
 
                     buffer_audio = await self.audio_buffer.get_frames()
-                    if len(buffer_audio) < self.processed_seconds + self.vad_interval: # ensure to not check the same second multiple times
+                    if len(buffer_audio) < self.processed_bytes + self.vad_interval_bytes: # ensure to not check the same interval multiple times
                         continue
                     if is_speaking and not allow_interruptions:
                         #NOTE: user speech will be saved in the buffer
                         continue
-                    last_chunk_audio = buffer_audio[self.processed_seconds:self.processed_seconds + self.vad_interval] # cutting last second of audio
-                    self.processed_seconds += self.vad_interval
+                    last_chunk_audio = buffer_audio[self.processed_bytes:self.processed_bytes + self.vad_interval_bytes] # cutting last interval of audio
+                    self.processed_bytes += self.vad_interval_bytes
 
                     vad_state = await self.vad.detect(last_chunk_audio)
 
-                    max_time_reached = self.max_wait_time > 0 and (time.time() - self.last_response_time) > self.max_wait_time
+                    max_time_reached = self.last_response_time is not None \
+                                        and self.max_wait_time > 0 \
+                                        and (time.time() - self.last_response_time) > self.max_wait_time
                     need_run_agent = await self.flow_manager.run_agent(vad_state)
 
                     if max_time_reached or need_run_agent:
@@ -165,7 +168,7 @@ class Server:
                         self.speaking = asyncio.create_task(self.answer(buffer_audio))
                         self.flow_manager.reset()
                         self.audio_buffer.clear()
-                        self.processed_seconds = 0
+                        self.processed_bytes = 0
                     else:
                         pass # later, we will implement silence sending
             except Exception as e:
@@ -173,9 +176,10 @@ class Server:
                 asyncio.create_task(self.callback.on_error(self.uid, e)) # fire and forget
                 raise e
     
-    async def answer(self, audio: bytes):
+    async def answer(self, audio: bytes) -> bool:
         """
         answer the audio
+        Returns True if successful, False if failed
         """
         try:
             wav_audio = await pcm2wav(audio, sample_rate=self.adapter.sample_rate)
@@ -193,9 +197,14 @@ class Server:
             if response_transformation.post_action:
                 # await response_transformation.post_action
                 asyncio.create_task(response_transformation.post_action) # fire and forget
+            return True
+        except asyncio.CancelledError:
+            logger.info("Answer was cancelled")
         except Exception as e:
             logger.error(f"Error answering audio: {e}")
-            return None
+            # Notify callback about the error
+            asyncio.create_task(self.callback.on_error(self.uid, e))
+            return False
     
     async def speak(self, text: str):
         """
@@ -204,18 +213,28 @@ class Server:
         coro = self._speak()
         key = self.audio_cache.make_key(text, self.agent.tts_provider.tts_footprint)
         cached_chunks = await self.audio_cache.get(key)
-        if cached_chunks:
-            logger.info(f"Using cached audio for text: {text[:50]}... ({len(cached_chunks)} chunks)")
-            await coro.asend(None)  # initialize the coroutine
-            for chunk in cached_chunks:
-                await coro.asend(chunk)      
-            await coro.aclose()  # close the coroutine
-        else:
-            await self.agent.tts_stream_to(text, coro, try_backup=True)
-            logger.info(f"Finished speaking")
-            ai_pcm16_chunks = await self.audio_logger.get_last_ai_chunks()
-            await self.audio_cache.set(key, ai_pcm16_chunks)
-            logger.info(f"Cached audio for {text}, {len(ai_pcm16_chunks)} bytes")
+        
+        try:
+            if cached_chunks:
+                logger.info(f"Using cached audio for text: {text[:50]}... ({len(cached_chunks)} chunks)")
+                await coro.asend(None)  # initialize the coroutine
+                for chunk in cached_chunks:
+                    await coro.asend(chunk)      
+            else:
+                ai_pcm16_chunks = []
+                async def collect_ai_chunks():
+                    nonlocal ai_pcm16_chunks
+                    while True:
+                        pcm16_chunk = yield
+                        await coro.asend(pcm16_chunk)
+                        ai_pcm16_chunks.append(pcm16_chunk)
+                await self.agent.tts_stream_to(text, collect_ai_chunks(), try_backup=True)
+                logger.info(f"Finished speaking")
+                await self.audio_cache.set(key, ai_pcm16_chunks)
+                logger.info(f"Cached audio for {text}, {len(ai_pcm16_chunks)} bytes")
+        except asyncio.CancelledError:
+            logger.info(f"Speech was cancelled for text: {text[:50]}...")
+            
         asyncio.create_task(self.audio_logger.save()) # save in background to not block the main thread
         self.last_response_time = time.time()
     
@@ -228,8 +247,6 @@ class Server:
             chunk_count += 1
             total_bytes += len(pcm16_chunk)
 
-            await self.audio_logger.log_ai(pcm16_chunk) # log without any processing
-
             if buffer:
                 logger.debug(f"Joining buffer with pcm16, buffer length: {len(buffer)}")
                 pcm16_chunk = buffer + pcm16_chunk
@@ -239,7 +256,7 @@ class Server:
                 buffer += pcm16_chunk[-1:]
                 pcm16_chunk = pcm16_chunk[:-1]
 
-            logger.debug(f"Sending chunk {chunk_count} of {total_bytes} bytes")
+            logger.debug(f"Sending chunk {chunk_count} ({len(pcm16_chunk)} bytes)")
             if self.agent.tts_provider.response_sample_rate != self.adapter.sample_rate:
                 logger.debug(f"Resampling audio from {self.agent.tts_provider.response_sample_rate}Hz to {self.adapter.sample_rate}Hz")
                 pcm16_chunk = await resample_pcm16(
@@ -257,6 +274,7 @@ class Server:
                 )
 
             await self.adapter.send_audio(pcm16_chunk)
+            await self.audio_logger.log_ai(pcm16_chunk) # log without any processing
 
     def close(self):
         logger.info("Closing server")
@@ -265,7 +283,7 @@ class Server:
         self.agent.history_manager.clear()
         self.flow_manager.reset()
         self.speaking = None
-        self.processed_seconds = 0
+        self.processed_bytes = 0
         self.last_response_time = None
         if self.uid is not None and self.callback is not None:
             asyncio.create_task(self.callback.on_finish(self.uid)) # fire and forget

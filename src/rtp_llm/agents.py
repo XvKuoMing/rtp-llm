@@ -231,10 +231,7 @@ class VoiceAgent:
             pass
         except Exception as e:
             logger.error(f"Error while streaming tts to {coro}: {e}")
-            if try_backup:
-                await self._tts_backup(text=text, stream=True)
-            else:
-                raise e
+            raise e
         finally:
             await coro.aclose()
 

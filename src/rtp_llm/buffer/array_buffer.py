@@ -1,5 +1,4 @@
 from .base import BaseAudioBuffer
-from copy import deepcopy
 
 class ArrayBuffer(BaseAudioBuffer):
 
@@ -10,7 +9,7 @@ class ArrayBuffer(BaseAudioBuffer):
         self.buffer.extend(frame)
 
     async def get_frames(self) -> bytes:
-        return deepcopy(self.buffer)
+        return bytes(self.buffer)  # Zero-copy conversion to immutable bytes
     
     def clear(self):
         self.buffer = bytearray()
