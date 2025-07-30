@@ -207,23 +207,8 @@ class Server:
         if cached_chunks:
             logger.info(f"Using cached audio for text: {text[:50]}... ({len(cached_chunks)} chunks)")
             await coro.asend(None)  # initialize the coroutine
-            
-            # Send chunks with proper timing
-            start_time = time.time()
-            for i, chunk in enumerate(cached_chunks):
-                await coro.asend(chunk)
-                
-                # Calculate expected time for next chunk (20ms intervals)
-                expected_time = start_time + (i + 1) * 0.020
-                current_time = time.time()
-                sleep_time = expected_time - current_time
-                
-                # Only sleep if we're ahead of schedule
-                if sleep_time > 0:
-                    await asyncio.sleep(sleep_time)
-                elif sleep_time < -0.1:  # Log if we're significantly behind
-                    logger.warning(f"Cached audio playback behind by {-sleep_time:.3f}s")
-            
+            for chunk in cached_chunks:
+                await coro.asend(chunk)            
             await coro.aclose()  # close the coroutine
         else:
             await self.agent.tts_stream_to(text, coro, try_backup=True)
