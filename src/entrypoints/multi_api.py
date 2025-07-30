@@ -6,8 +6,9 @@ from rtp_llm.cache import RedisAudioCache
 from rtp_llm.server import Server
 from rtp_llm.adapters.rtp import RTPAdapter
 from rtp_llm.callbacks.rest_callback import RestCallback
+# from rtp_llm.audio_logger import AUDIO_LOGS_DIR
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from typing import Optional, Dict, Any, Set, List, Union
 import asyncio
 import os
@@ -15,6 +16,8 @@ import socket
 from pydantic import BaseModel
 import logging
 import threading
+# import base64
+# import glob
 
 # Configure logging
 logging.basicConfig(
@@ -137,7 +140,7 @@ async def start(request: StartRTPRequest):
 
     if concurrency_limit != -1 and len(running_servers) >= concurrency_limit:
         logger.warning(f"Concurrency limit reached ({len(running_servers)}/{concurrency_limit})")
-        return {"message": "Concurrency limit reached", "status": "error"}
+        raise HTTPException(status_code=429, detail="Concurrency limit reached")
 
     try:
         logger.info(f"Using host IP: {host}")
@@ -285,7 +288,7 @@ async def stop(request: StopRTPRequest):
 class UpdateRTPRequest(BaseModel):
     uid: Union[int, str]  # Fixed type annotation
     system_prompt: Optional[str] = None
-    
+
 
 @app.post("/update")
 async def update(request: UpdateRTPRequest):
@@ -299,7 +302,7 @@ async def update(request: UpdateRTPRequest):
     return {"message": "updated"}
 
 
-class UpdateConfigRequest(BaseModel):
+class ConfigView(BaseModel):
     # Common Server configuration
     max_wait_time: Optional[int] = None
     chat_limit: Optional[int] = None
@@ -347,7 +350,7 @@ class UpdateConfigRequest(BaseModel):
 
 
 @app.post("/update_config")
-async def update_config(request: UpdateConfigRequest):
+async def update_config(request: ConfigView):
     global config, voice_agent, vad, redis_audio_cache
     
     if config is None:
@@ -393,6 +396,52 @@ async def update_config(request: UpdateConfigRequest):
     except Exception as e:
         logger.error(f"Error updating config: {e}")
         return {"message": f"Error updating config: {e}", "status": "error"}
+
+
+@app.get("/config")
+async def get_config():
+    global config
+    
+    if config is None:
+        raise HTTPException(status_code=404, detail="Config not initialized")
+    
+    try:
+        return ConfigView(
+            max_wait_time=config.max_wait_time,
+            chat_limit=config.chat_limit,
+            vad=config.vad,
+            system_prompt=config.system_prompt,
+            stt_providers=config.stt_providers,
+            tts_providers=config.tts_providers,
+            gemini_stt_api_key=config.gemini_stt_api_key,
+            gemini_stt_base_url=config.gemini_stt_base_url,
+            gemini_stt_model=config.gemini_stt_model,
+            openai_stt_api_key=config.openai_stt_api_key,
+            openai_stt_base_url=config.openai_stt_base_url,
+            openai_stt_model=config.openai_stt_model,
+            openai_tts_api_key=config.openai_tts_api_key,
+            openai_tts_base_url=config.openai_tts_base_url,
+            openai_tts_model=config.openai_tts_model,
+            openai_tts_pcm_response_format=config.openai_tts_pcm_response_format,
+            openai_tts_response_sample_rate=config.openai_tts_response_sample_rate,
+            openai_tts_voice=config.openai_tts_voice,
+            ast_api_key=config.ast_api_key,
+            ast_base_url=config.ast_base_url,
+            ast_model=config.ast_model,
+            ast_language=config.ast_language,
+            llm_model=config.llm_model,
+            llm_api_key=config.llm_api_key,
+            llm_base_url=config.llm_base_url,
+            tts_api_key=config.tts_api_key,
+            tts_base_url=config.tts_base_url,
+            tts_model=config.tts_model,
+            tts_pcm_response_format=config.tts_pcm_response_format,
+            tts_response_sample_rate=config.tts_response_sample_rate,
+            tts_voice=config.tts_voice,
+        )
+    except Exception as e:
+        logger.error(f"Error retrieving config: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving config: {e}")
 
 
 class StatusResponse(BaseModel):
