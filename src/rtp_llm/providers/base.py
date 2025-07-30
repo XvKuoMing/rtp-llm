@@ -3,7 +3,7 @@ from typing import Union, AsyncGenerator, Any, Optional, Dict
 from dataclasses import dataclass
 
 
-
+# TODO: add limits awareness to the providers, so the backup will be used if some providers reached limits of active requests
 
 @dataclass(frozen=True)
 class Message:

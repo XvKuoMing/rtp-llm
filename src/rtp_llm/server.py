@@ -208,7 +208,8 @@ class Server:
             logger.info(f"Using cached audio for text: {text[:50]}... ({len(cached_chunks)} chunks)")
             await coro.asend(None)  # initialize the coroutine
             for chunk in cached_chunks:
-                await coro.asend(chunk)            
+                await coro.asend(chunk)
+                await asyncio.sleep(0.02) # 20ms            
             await coro.aclose()  # close the coroutine
         else:
             await self.agent.tts_stream_to(text, coro, try_backup=True)
