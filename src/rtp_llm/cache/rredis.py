@@ -1,7 +1,9 @@
 from .base import BaseAudioCache
 from redis.asyncio import Redis
-from typing import Optional
+from typing import Optional, List
 import logging
+import json
+import base64
 
 logger = logging.getLogger(__name__)
 
@@ -13,28 +15,36 @@ class RedisAudioCache(BaseAudioCache):
     def make_key(self, text: str, tts_footprint: str) -> str:
         return f"tts_cache:{text}_{tts_footprint}"
     
-    async def get(self, key: str) -> Optional[bytes]:
+    async def get(self, key: str) -> Optional[List[bytes]]:
         try:
             result = await self.client.get(key)
             if result is None:
                 logger.debug(f"Cache miss for key: {key}")
                 return None
-            logger.debug(f"Cache hit for key: {key}")
-            return result
+            
+            # Deserialize JSON and decode base64 chunks
+            data = json.loads(result)
+            chunks = [base64.b64decode(chunk) for chunk in data]
+            logger.debug(f"Cache hit for key: {key}, {len(chunks)} chunks")
+            return chunks
         except Exception as e:
             logger.error(f"Error retrieving from Redis cache: {e}")
             return None
     
-    async def set(self, key: str, audio_data: bytes) -> None:
+    async def set(self, key: str, audio_chunks: List[bytes]) -> None:
         try:
+            # Serialize chunks as base64-encoded JSON
+            data = [base64.b64encode(chunk).decode('utf-8') for chunk in audio_chunks]
+            json_data = json.dumps(data)
+            
             if self.ttl_seconds is not None:
                 # Use setex with TTL
-                await self.client.setex(key, self.ttl_seconds, audio_data)
-                logger.debug(f"Cached audio data for key: {key} with TTL: {self.ttl_seconds}s")
+                await self.client.setex(key, self.ttl_seconds, json_data)
+                logger.debug(f"Cached {len(audio_chunks)} audio chunks for key: {key} with TTL: {self.ttl_seconds}s")
             else:
                 # Use regular set (no expiration)
-                await self.client.set(key, audio_data)
-                logger.debug(f"Cached audio data for key: {key} (no expiration)")
+                await self.client.set(key, json_data)
+                logger.debug(f"Cached {len(audio_chunks)} audio chunks for key: {key} (no expiration)")
         except Exception as e:
             logger.error(f"Error storing to Redis cache: {e}")
     

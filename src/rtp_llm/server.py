@@ -13,7 +13,7 @@ from .utils.audio_processing import pcm2wav, resample_pcm16, adjust_volume_pcm16
 from .audio_logger import AudioLogger
 from .callbacks import BaseCallback, NullCallback
 from .cache import BaseAudioCache, NullAudioCache
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import time
 import uuid
 
@@ -203,12 +203,28 @@ class Server:
         """
         coro = self._speak()
         key = self.audio_cache.make_key(text, self.agent.tts_provider.tts_footprint)
-        cached_audio = await self.audio_cache.get(key)
-        if cached_audio:
-            logger.info(f"Using cached audio for {text}")
-            await coro.asend(None) # initialize the coroutine
-            await coro.asend(cached_audio) # send the whole cached audio
-            await coro.aclose() # close the coroutine
+        cached_chunks = await self.audio_cache.get(key)
+        if cached_chunks:
+            logger.info(f"Using cached audio for text: {text[:50]}... ({len(cached_chunks)} chunks)")
+            await coro.asend(None)  # initialize the coroutine
+            
+            # Send chunks with proper timing
+            start_time = time.time()
+            for i, chunk in enumerate(cached_chunks):
+                await coro.asend(chunk)
+                
+                # Calculate expected time for next chunk (20ms intervals)
+                expected_time = start_time + (i + 1) * 0.020
+                current_time = time.time()
+                sleep_time = expected_time - current_time
+                
+                # Only sleep if we're ahead of schedule
+                if sleep_time > 0:
+                    await asyncio.sleep(sleep_time)
+                elif sleep_time < -0.1:  # Log if we're significantly behind
+                    logger.warning(f"Cached audio playback behind by {-sleep_time:.3f}s")
+            
+            await coro.aclose()  # close the coroutine
         else:
             await self.agent.tts_stream_to(text, coro, try_backup=True)
             logger.info(f"Finished speaking")
@@ -258,8 +274,6 @@ class Server:
 
             await self.adapter.send_audio(pcm16_chunk)
             # await self.audio_logger.log_ai(pcm16_chunk)
-
-
 
     def close(self):
         logger.info("Closing server")

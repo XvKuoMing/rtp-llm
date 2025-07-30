@@ -2,7 +2,7 @@
 In-memory audio cache implementation with LRU eviction.
 """
 import asyncio
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 import logging
 
 from .base import BaseAudioCache
@@ -16,21 +16,23 @@ class InMemoryAudioCache(BaseAudioCache):
     """
     
     def __init__(self):
-        self._cache: Dict[str, bytes] = {}
+        self._cache: Dict[str, List[bytes]] = {}
         self._lock = asyncio.Lock()
     
     def make_key(self, text: str, tts_footprint: str) -> str:
         return f"{text}_{tts_footprint}"
     
-    async def get(self, key: str) -> Optional[bytes]:
+    async def get(self, key: str) -> Optional[List[bytes]]:
         async with self._lock:
             if key in self._cache:
-                return self._cache[key]
+                # Return a copy to avoid external modification
+                return self._cache[key].copy()
             return None
     
-    async def set(self, key: str, audio_data: bytes) -> None:
+    async def set(self, key: str, audio_chunks: List[bytes]) -> None:
         async with self._lock:
-            self._cache[key] = audio_data
+            # Store a copy to avoid external modification
+            self._cache[key] = audio_chunks.copy()
     
     async def clear(self) -> None:
         async with self._lock:

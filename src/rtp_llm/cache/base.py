@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, List
 
 class BaseAudioCache(ABC):
     """Base class for audio caching implementations."""
@@ -12,7 +12,7 @@ class BaseAudioCache(ABC):
         pass
     
     @abstractmethod
-    async def get(self, key: str) -> Optional[bytes]:
+    async def get(self, key: str) -> Optional[List[bytes]]:
         """
         Retrieve cached audio data for the given key.
         
@@ -20,18 +20,18 @@ class BaseAudioCache(ABC):
             key: The cache key (typically the text that was converted to speech)
             
         Returns:
-            The cached audio bytes if found, None otherwise
+            A list of audio chunks if found, None otherwise
         """
         pass
     
     @abstractmethod
-    async def set(self, key: str, audio_data: bytes) -> None:
+    async def set(self, key: str, audio_chunks: List[bytes]) -> None:
         """
         Store audio data in the cache.
         
         Args:
             key: The cache key (typically the text that was converted to speech)
-            audio_data: The PCM audio data to cache
+            audio_chunks: List of PCM audio chunks to cache
         """
         pass
     
