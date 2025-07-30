@@ -228,6 +228,8 @@ class Server:
             chunk_count += 1
             total_bytes += len(pcm16_chunk)
 
+            await self.audio_logger.log_ai(pcm16_chunk) # log without any processing
+
             if buffer:
                 logger.debug(f"Joining buffer with pcm16, buffer length: {len(buffer)}")
                 pcm16_chunk = buffer + pcm16_chunk
@@ -246,9 +248,6 @@ class Server:
                     target_sample_rate=self.adapter.sample_rate,
                 )
 
-            # log without volume adjustment
-            await self.audio_logger.log_ai(pcm16_chunk)
-
             # Apply volume adjustment
             if self.volume != 1.0:
                 logger.debug(f"Applying volume adjustment: {self.volume}")
@@ -258,7 +257,6 @@ class Server:
                 )
 
             await self.adapter.send_audio(pcm16_chunk)
-            # await self.audio_logger.log_ai(pcm16_chunk)
 
     def close(self):
         logger.info("Closing server")
