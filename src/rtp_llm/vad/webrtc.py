@@ -7,7 +7,7 @@ logger.setLevel(logging.DEBUG)
 
 class WebRTCVAD(BaseVAD):
 
-    def __init__(self, sample_rate: int = 8000, aggressiveness: int = 3, min_speech_duration_ms: int = 30):
+    def __init__(self, sample_rate: int = 8000, aggressiveness: int = 3, min_speech_duration_ms: int = 60):
         self.vad = webrtcvad.Vad(aggressiveness)
         self.sample_rate = sample_rate
         self.min_speech_duration_ms = min_speech_duration_ms

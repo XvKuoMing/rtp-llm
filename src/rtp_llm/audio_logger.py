@@ -181,3 +181,9 @@ class AudioLogger:
                     
         except Exception as e:
             print(f"Error writing audio to {filepath}: {e}")
+    
+    def clear(self):
+        with self.lock:
+            self.chunks.clear()
+            self.all_chunks.clear()
+            self.start_time = None

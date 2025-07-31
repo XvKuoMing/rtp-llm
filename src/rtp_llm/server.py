@@ -49,7 +49,7 @@ class Server:
         self.vad_interval_bytes = self.vad_interval_samples * 2  # bytes per interval (16-bit PCM)
         
         # Convert to milliseconds for comparison with VAD min duration
-        vad_interval_ms = self.vad_interval_samples * 1000 / self.adapter.sample_rate
+        vad_interval_ms = (self.vad_interval_samples * 1000) / self.adapter.sample_rate
         
         if vad_interval_ms < self.vad.min_speech_duration_ms:
             raise ValueError(f"VAD interval {vad_interval_ms:.1f}ms is less than min speech duration: {self.vad.min_speech_duration_ms}ms")
@@ -164,11 +164,12 @@ class Server:
 
                     if max_time_reached or need_run_agent:
                         if need_run_agent:
-                            await self.audio_logger.beep() # NOTE: this is a hack to make the user aware that the agent started answering
+                            await self.audio_logger.beep() # NOTE: this is a hack for audio logging to make the user aware that the agent started answering
                         if is_speaking:
                             # allowing interruptions
                             self.speaking.cancel()
                         logger.info(f"Answering to the user; max_time_reached: {max_time_reached}, need_run_agent: {need_run_agent}")
+                        buffer_audio = await self.audio_buffer.get_frames() # update the buffer to include last arrived frames
                         self.speaking = asyncio.create_task(self.answer(buffer_audio))
                         self.flow_manager.reset()
                         self.audio_buffer.clear()
@@ -285,6 +286,7 @@ class Server:
         self.speaking = None
         self.processed_bytes = 0
         self.last_response_time = None
+        self.audio_logger.clear()
         if self.uid is not None and self.callback is not None:
             asyncio.create_task(self.callback.on_finish(self.uid)) # fire and forget
             self.uid = None

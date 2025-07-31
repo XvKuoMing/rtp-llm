@@ -200,7 +200,7 @@ class RTPAdapter(Adapter):
 
     async def send_audio(self, audio: bytes) -> None:
         """
-        recieves audio in pcm16 format (take a look at server.py file to see how it is converted to pcm16)
+        recieves audio in pcm16 format
         """
         if self.peer_ip is None or self.peer_port is None:
             logger.warning("Peer IP and port are not set, skipping send")
