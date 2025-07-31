@@ -6,9 +6,10 @@ from rtp_llm.cache import RedisAudioCache
 from rtp_llm.server import Server
 from rtp_llm.adapters.rtp import RTPAdapter
 from rtp_llm.callbacks.rest_callback import RestCallback
-# from rtp_llm.audio_logger import AUDIO_LOGS_DIR
+from rtp_llm.audio_logger import AUDIO_LOGS_DIR
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query, Response
+from fastapi.responses import FileResponse
 from typing import Optional, Dict, Any, Set, List, Union
 import asyncio
 import os
@@ -16,8 +17,10 @@ import socket
 from pydantic import BaseModel
 import logging
 import threading
-# import base64
-# import glob
+import glob
+import wave
+from datetime import datetime
+import math
 
 # Configure logging
 logging.basicConfig(
@@ -461,6 +464,312 @@ async def status():
 @app.get("/ping")
 async def ping():
     return {"message": "pong"}
+
+
+class AudioFileInfo(BaseModel):
+    filename: str
+    uid: str
+    conversation_timestamp: float
+    file_size: int
+    duration_seconds: Optional[float] = None
+    sample_rate: Optional[int] = None
+    channels: Optional[int] = None
+    created_date: str
+    file_path: str
+
+
+class AudioListResponse(BaseModel):
+    audio_files: List[AudioFileInfo]
+    total_count: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+def parse_audio_filename(filename: str) -> Optional[Dict[str, Any]]:
+    """Parse audio filename to extract UID and timestamp"""
+    if not filename.endswith('.wav'):
+        return None
+    
+    # Expected format: {uid}_conversation_{timestamp}.wav
+    try:
+        name_without_ext = filename[:-4]  # Remove .wav
+        parts = name_without_ext.split('_conversation_')
+        if len(parts) != 2:
+            return None
+        
+        uid = parts[0]
+        timestamp = float(parts[1])
+        
+        return {
+            'uid': uid,
+            'timestamp': timestamp
+        }
+    except (ValueError, IndexError):
+        return None
+
+
+async def get_audio_file_info(filepath: str) -> Optional[AudioFileInfo]:
+    """Get detailed information about an audio file (async)"""
+    try:
+        filename = os.path.basename(filepath)
+        parsed = parse_audio_filename(filename)
+        if not parsed:
+            return None
+        
+        # Use asyncio.to_thread for blocking file I/O operations
+        if not await asyncio.to_thread(os.path.exists, filepath):
+            return None
+        
+        file_size = await asyncio.to_thread(os.path.getsize, filepath)
+        created_date = datetime.fromtimestamp(parsed['timestamp']).isoformat()
+        
+        # Try to get audio metadata asynchronously
+        duration_seconds = None
+        sample_rate = None
+        channels = None
+        
+        try:
+            # Run the wave file reading in a thread to avoid blocking
+            audio_metadata = await asyncio.to_thread(_read_wave_metadata, filepath)
+            if audio_metadata:
+                frames, sample_rate, channels = audio_metadata
+                duration_seconds = frames / float(sample_rate) if sample_rate > 0 else None
+        except Exception as e:
+            logger.warning(f"Could not read audio metadata for {filepath}: {e}")
+        
+        return AudioFileInfo(
+            filename=filename,
+            uid=parsed['uid'],
+            conversation_timestamp=parsed['timestamp'],
+            file_size=file_size,
+            duration_seconds=duration_seconds,
+            sample_rate=sample_rate,
+            channels=channels,
+            created_date=created_date,
+            file_path=filepath
+        )
+    except Exception as e:
+        logger.error(f"Error getting audio file info for {filepath}: {e}")
+        return None
+
+
+def _read_wave_metadata(filepath: str) -> Optional[tuple]:
+    """Synchronous helper function to read wave file metadata"""
+    try:
+        with wave.open(filepath, 'rb') as wav_file:
+            frames = wav_file.getnframes()
+            sample_rate = wav_file.getframerate()
+            channels = wav_file.getnchannels()
+            return (frames, sample_rate, channels)
+    except Exception:
+        return None
+
+
+@app.get("/audio", response_model=AudioListResponse)
+async def list_audio_files(
+    uid: Optional[str] = Query(None, description="Filter by UID"),
+    date_from: Optional[str] = Query(None, description="Filter by date from (ISO format, e.g., 2024-01-01T00:00:00)"),
+    date_to: Optional[str] = Query(None, description="Filter by date to (ISO format, e.g., 2024-01-01T23:59:59)"),
+    page: int = Query(1, ge=1, description="Page number (1-based)"),
+    page_size: int = Query(20, ge=1, le=100, description="Number of items per page"),
+    sort_by: str = Query("timestamp_desc", description="Sort by: timestamp_asc, timestamp_desc, duration_asc, duration_desc, size_asc, size_desc")
+):
+    """
+    List audio files with optional filtering and pagination.
+    
+    Returns metadata about audio files stored on disk.
+    """
+    try:
+        # Ensure audio logs directory exists
+        if not os.path.exists(AUDIO_LOGS_DIR):
+            return AudioListResponse(
+                audio_files=[],
+                total_count=0,
+                page=page,
+                page_size=page_size,
+                total_pages=0
+            )
+        
+        # Get all WAV files
+        audio_pattern = os.path.join(AUDIO_LOGS_DIR, "*.wav")
+        audio_files_paths = await asyncio.to_thread(glob.glob, audio_pattern)
+        
+        # Parse file information in parallel with a semaphore to limit concurrency
+        MAX_CONCURRENT_FILES = 50  # Limit concurrent file operations
+        semaphore = asyncio.Semaphore(MAX_CONCURRENT_FILES)
+        
+        async def get_file_info_with_semaphore(filepath: str) -> Optional[AudioFileInfo]:
+            async with semaphore:
+                return await get_audio_file_info(filepath)
+        
+        # Process all files in parallel
+        if audio_files_paths:
+            tasks = [get_file_info_with_semaphore(filepath) for filepath in audio_files_paths]
+            file_infos = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Filter out None values and exceptions
+            audio_files_info = []
+            for file_info in file_infos:
+                if isinstance(file_info, AudioFileInfo):
+                    audio_files_info.append(file_info)
+                elif isinstance(file_info, Exception):
+                    logger.warning(f"Error processing audio file: {file_info}")
+        else:
+            audio_files_info = []
+        
+        # Apply filters
+        filtered_files = audio_files_info
+        
+        # Filter by UID
+        if uid:
+            filtered_files = [f for f in filtered_files if isinstance(f, AudioFileInfo) and f.uid == uid]
+        
+        # Filter by date range
+        if date_from:
+            try:
+                date_from_ts = datetime.fromisoformat(date_from).timestamp()
+                filtered_files = [f for f in filtered_files if isinstance(f, AudioFileInfo) and f.conversation_timestamp >= date_from_ts]
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid date_from format. Use ISO format: 2024-01-01T00:00:00")
+        
+        if date_to:
+            try:
+                date_to_ts = datetime.fromisoformat(date_to).timestamp()
+                filtered_files = [f for f in filtered_files if f.conversation_timestamp <= date_to_ts]
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid date_to format. Use ISO format: 2024-01-01T23:59:59")
+        
+        # Sort files
+        if sort_by == "timestamp_asc":
+            filtered_files.sort(key=lambda x: x.conversation_timestamp)
+        elif sort_by == "timestamp_desc":
+            filtered_files.sort(key=lambda x: x.conversation_timestamp, reverse=True)
+        elif sort_by == "duration_asc":
+            filtered_files.sort(key=lambda x: x.duration_seconds or 0)
+        elif sort_by == "duration_desc":
+            filtered_files.sort(key=lambda x: x.duration_seconds or 0, reverse=True)
+        elif sort_by == "size_asc":
+            filtered_files.sort(key=lambda x: x.file_size)
+        elif sort_by == "size_desc":
+            filtered_files.sort(key=lambda x: x.file_size, reverse=True)
+        else:
+            raise HTTPException(status_code=400, detail="Invalid sort_by parameter")
+        
+        total_count = len(filtered_files)
+        total_pages = math.ceil(total_count / page_size) if total_count > 0 else 0
+        
+        # Apply pagination
+        start_index = (page - 1) * page_size
+        end_index = start_index + page_size
+        paginated_files = filtered_files[start_index:end_index]
+        
+        return AudioListResponse(
+            audio_files=paginated_files,
+            total_count=total_count,
+            page=page,
+            page_size=page_size,
+            total_pages=total_pages
+        )
+        
+    except Exception as e:
+        logger.error(f"Error listing audio files: {e}")
+        raise HTTPException(status_code=500, detail=f"Error listing audio files: {str(e)}")
+
+
+@app.get("/audio/{filename}")
+async def download_audio_file(filename: str):
+    """
+    Download a specific audio file by filename.
+    
+    Returns the actual audio file for download.
+    """
+    try:
+        # Validate filename format and prevent directory traversal
+        if not filename.endswith('.wav') or '/' in filename or '\\' in filename or '..' in filename:
+            raise HTTPException(status_code=400, detail="Invalid filename")
+        
+        filepath = os.path.join(AUDIO_LOGS_DIR, filename)
+        
+        if not await asyncio.to_thread(os.path.exists, filepath):
+            raise HTTPException(status_code=404, detail="Audio file not found")
+        
+        # Verify it's actually an audio file we recognize
+        parsed = parse_audio_filename(filename)
+        if not parsed:
+            raise HTTPException(status_code=400, detail="Invalid audio filename format")
+        
+        return FileResponse(
+            path=filepath,
+            media_type="audio/wav",
+            filename=filename
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error downloading audio file {filename}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error downloading audio file: {str(e)}")
+
+
+@app.get("/audio/{filename}/info", response_model=AudioFileInfo)
+async def get_audio_file_metadata(filename: str):
+    """
+    Get detailed metadata about a specific audio file.
+    """
+    try:
+        # Validate filename format and prevent directory traversal
+        if not filename.endswith('.wav') or '/' in filename or '\\' in filename or '..' in filename:
+            raise HTTPException(status_code=400, detail="Invalid filename")
+        
+        filepath = os.path.join(AUDIO_LOGS_DIR, filename)
+        
+        if not await asyncio.to_thread(os.path.exists, filepath):
+            raise HTTPException(status_code=404, detail="Audio file not found")
+        
+        file_info = await get_audio_file_info(filepath)
+        if not file_info:
+            raise HTTPException(status_code=400, detail="Invalid audio file or unable to read metadata")
+        
+        return file_info
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting audio file metadata for {filename}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting audio file metadata: {str(e)}")
+
+
+@app.delete("/audio/{filename}")
+async def delete_audio_file(filename: str):
+    """
+    Delete a specific audio file by filename.
+    """
+    try:
+        # Validate filename format and prevent directory traversal
+        if not filename.endswith('.wav') or '/' in filename or '\\' in filename or '..' in filename:
+            raise HTTPException(status_code=400, detail="Invalid filename")
+        
+        filepath = os.path.join(AUDIO_LOGS_DIR, filename)
+        
+        if not await asyncio.to_thread(os.path.exists, filepath):
+            raise HTTPException(status_code=404, detail="Audio file not found")
+        
+        # Verify it's actually an audio file we recognize
+        parsed = parse_audio_filename(filename)
+        if not parsed:
+            raise HTTPException(status_code=400, detail="Invalid audio filename format")
+        
+        await asyncio.to_thread(os.remove, filepath)
+        logger.info(f"Deleted audio file: {filename}")
+        
+        return {"message": f"Audio file {filename} deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting audio file {filename}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error deleting audio file: {str(e)}")
 
 
 
