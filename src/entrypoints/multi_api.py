@@ -10,6 +10,7 @@ from rtp_llm.audio_logger import AUDIO_LOGS_DIR
 
 from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, Dict, Any, Set, List, Union
 import asyncio
 import os
@@ -48,6 +49,15 @@ used_ports: Set[int] = set()
 port_lock = threading.Lock()
 
 app = FastAPI()
+
+# Add CORS middleware to handle cross-origin requests
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods including OPTIONS
+    allow_headers=["*"],  # Allows all headers
+)
 
 
 @app.on_event("startup")
