@@ -1,6 +1,6 @@
 from .providers import Message, BaseSTTProvider, BaseTTSProvider
 from .history import BaseChatHistory
-from typing import List, AsyncGenerator, Optional, Any, Awaitable, Dict, AsyncGenerator
+from typing import List, AsyncGenerator, Optional, Any, Dict, Union, Literal, Callable
 import logging
 
 logger = logging.getLogger(__name__)
@@ -67,11 +67,61 @@ class VoiceAgent:
         """
         self.tts_provider.tts_gen_config = self.tts_provider.validate_tts_config(config) or {}
     
+
+    async def add_message(self, message: Message, is_user: bool, is_audio: bool = False):
+        """
+        Add a message to the history.
+        """
+        role = "user" if is_user else "assistant"
+        data_type = "audio" if is_audio else "text"
+        await self.history_manager.add_message(Message(role=role, content=message, data_type=data_type))
+    
+
+    async def __rotate_provider(self, provider_type: Literal["stt", "tts"]):
+        """
+        Rotate the provider.
+        """
+        providers = self.backup_stt_providers if provider_type == "stt" else self.backup_tts_providers
+        if not isinstance(providers, list) or len(providers) == 0:
+            raise Exception(f"No backup providers for type: {provider_type} exist")
+        try:
+            if provider_type == "stt":
+                self.backup_stt_providers.pop(0)
+                self.backup_stt_providers.append(self.__stt_provider)
+                new_provider = self.backup_stt_providers[0]
+                self.__stt_provider = new_provider
+            else:
+                self.backup_tts_providers.pop(0)
+                self.backup_tts_providers.append(self.__tts_provider)
+                new_provider = self.backup_tts_providers[0]
+                self.__tts_provider = new_provider
+            
+            logger.info(f"Rotated {provider_type} provider to {new_provider.__class__.__name__}")
+        except IndexError:
+            logger.error(f"No backup {provider_type} providers configured")
+            raise
+        except Exception as e:
+            logger.error(f"Error rotating {provider_type} provider: {e}")
+            raise
+    
+    async def rotate_stt_provider(self):
+        """
+        Rotate the stt_provider.
+        """
+        await self.__rotate_provider("stt")
+    
+    async def rotate_tts_provider(self):    
+        """
+        Rotate the tts_provider.
+        """
+        await self.__rotate_provider("tts")
+
+    
     async def _stt(self, 
                    audio: bytes, 
                    stream: bool = False,
                    enable_history: bool = True
-                   ) -> Optional[str | AsyncGenerator[str, None]]:
+                   ) -> Optional[Union[str, AsyncGenerator[str, None]]]:
         """
         Convert audio to text using the stt_provider.
         If the primary provider fails, the agent will switch to the first available backup provider.
@@ -109,7 +159,7 @@ class VoiceAgent:
     async def _tts(self, 
                    text: str,
                    stream: bool = False, 
-                   ) -> Optional[bytes | AsyncGenerator[bytes, None]]:
+                   ) -> Optional[Union[bytes, AsyncGenerator[bytes, None]]]:
         """
         Convert text to audio using the tts_provider.
         If the primary provider fails, the agent will switch to the first available backup provider.
@@ -119,101 +169,95 @@ class VoiceAgent:
         else:
             return await self.tts_provider.tts(text=text)
     
-    async def _stt_backup(self, audio: bytes, 
+    
+    async def _fire_with_backup(self,
+                           provider: Literal["stt", "tts"],
+                          *args,
+                          **kwargs
+                          ) -> Optional[Union[str, bytes, AsyncGenerator[str, None], AsyncGenerator[bytes, None]]]:
+        """
+        Fire the backup provider.
+        If the primary provider fails, the agent will switch to the first available backup provider.
+        provider: "stt" or "tts"
+        args: arguments for the fire_func
+        kwargs: keyword arguments for the fire_func
+        """
+        backup_providers = self.backup_stt_providers if provider == "stt" else self.backup_tts_providers
+        fire_func = self._stt if provider == "stt" else self._tts
+        
+        # Try primary provider first
+        try:
+            return await fire_func(*args, **kwargs)
+        except Exception as e:
+            current_provider = self.stt_provider if provider == "stt" else self.tts_provider
+            logger.warning(f"Primary {provider} provider {current_provider.__class__.__name__} failed: {e}")
+            
+            if not backup_providers:
+                raise Exception(f"Primary {provider} provider failed and no backups available")
+
+        # Try backup providers
+        rotation_count = 0
+        possible_providers_count = len(backup_providers)
+        while rotation_count < possible_providers_count:
+            try:
+                await self.__rotate_provider(provider)
+                return await fire_func(*args, **kwargs)
+            except Exception as e:
+                current_provider = self.stt_provider if provider == "stt" else self.tts_provider
+                logger.warning(f"Backup {provider} provider {current_provider.__class__.__name__} failed: {e}")
+                rotation_count += 1
+                
+        raise Exception(f"All {provider} providers (primary + {possible_providers_count} backups) failed")
+
+    
+    async def _stt_with_backup(self, audio: bytes, 
                           stream: bool = False, 
                           enable_history: bool = True,
-                          ) -> Optional[str | AsyncGenerator[str, None]]:
+                          ) -> Optional[Union[str, AsyncGenerator[str, None]]]:
         """
         Convert audio to text using the backup stt_provider.
         If the primary provider fails, the agent will switch to the first available backup provider.
         """
-        if not self.backup_stt_providers:
-            raise Exception("No backup STT providers configured")
-            
-        for backup_provider in self.backup_stt_providers:
-            self.stt_provider = backup_provider
-            try:
-                return await self._stt(audio=audio, stream=stream, enable_history=enable_history)
-            except Exception as e:
-                logger.warning(f"Backup STT provider {backup_provider.__class__.__name__} failed: {e}")
-                continue
-        raise Exception("All backup stt providers failed")
+        return await self._fire_with_backup(provider="stt", audio=audio, stream=stream, enable_history=enable_history)
 
-    async def _tts_backup(self, 
+
+    async def _tts_with_backup(self, 
                           text: str, 
                           stream: bool = False, 
-                          ) -> Optional[bytes | AsyncGenerator[bytes, None]]:
+                          ) -> Optional[Union[bytes, AsyncGenerator[bytes, None]]]:
         """
         Convert text to audio using the backup tts_provider.
         If the primary provider fails, the agent will switch to the first available backup provider.
         """
-        if not self.backup_tts_providers:
-            raise Exception("No backup TTS providers configured")
-            
-        for backup_provider in self.backup_tts_providers:
-            self.tts_provider = backup_provider
-            try:
-                return await self._tts(text=text, 
-                                       stream=stream)
-            except Exception as e:
-                logger.warning(f"Backup TTS provider {backup_provider.__class__.__name__} failed: {e}")
-                continue
-        raise Exception("All backup tts providers failed")
-
-
-    async def _call_with_backup(self, func: Awaitable, 
-                                backup_func: Awaitable, 
-                                *args, 
-                                **kwargs) -> Any:
-        """
-        Call a function with backup providers.
-        If the primary provider fails, the agent will switch to the first available backup provider.
-        """
-        func_name = getattr(func, '__name__', 'unknown_function')
-        backup_func_name = getattr(backup_func, '__name__', 'unknown_backup_function')
-        
-        try:
-            return await func(*args, **kwargs)
-        except Exception as e:
-            logger.warning(f"Error in {func_name}: {e}; switching to backup")
-            try:
-                return await backup_func(*args, **kwargs)
-            except Exception as e:
-                logger.error(f"Error while calling backup {backup_func_name}: {e}")
-                raise e
-
+        return await self._fire_with_backup(provider="tts", text=text, stream=stream)
 
     async def stt(self, 
                   audio: bytes, 
                   stream: bool = False, 
                   enable_history: bool = True
-                  ) -> Optional[str | AsyncGenerator[str, None]]:
+                  ) -> Optional[Union[str, AsyncGenerator[str, None]]]:
         """
         Convert audio to text using the stt_provider.
         If the primary provider fails, the agent will switch to the first available backup provider.
         """
-        return await self._call_with_backup(self._stt, 
-                                            self._stt_backup, 
-                                            audio=audio, 
-                                            stream=stream, 
-                                            enable_history=enable_history)
+        return await self._stt_with_backup(audio=audio, stream=stream, enable_history=enable_history)
     
 
     async def tts(self, 
                   text: str,
                   stream: bool = False,
-                  ) -> Optional[bytes | AsyncGenerator[bytes, None]]:
+                  ) -> Optional[Union[bytes, AsyncGenerator[bytes, None]]]:
         """
         Convert text to audio using the tts_provider.
         If the primary provider fails, the agent will switch to the first available backup provider.
         """
-        return await self._call_with_backup(self._tts, 
-                                            self._tts_backup, 
-                                            text=text, 
-                                            stream=stream)
+        return await self._tts_with_backup(text=text, stream=stream)
     
 
-    async def tts_stream_to(self, text, coro: AsyncGenerator[bytes, None], try_backup: bool = True):
+    async def tts_stream_to(self, 
+                            text, 
+                            coro_factory: Callable[[None], AsyncGenerator[bytes, None]], 
+                            try_backup: bool = True):
         """
         Convert text to audio using the tts_provider.
         If the primary provider fails, the agent will switch to the first available backup provider.
@@ -221,17 +265,26 @@ class VoiceAgent:
         coro must accept pcm16 chunks as bytes and output None
         """
         # init coro
+        coro = coro_factory()
+        if not isinstance(coro, AsyncGenerator):
+            raise ValueError("coro_factory must return an AsyncGenerator")
         await coro.asend(None)
 
-        speech = await self.tts(text=text, stream=True)
         try:
+            speech = await self.tts(text=text, stream=True)
             async for chunk in speech:
                 await coro.asend(chunk)
         except StopAsyncIteration:
             pass
         except Exception as e:
-            logger.error(f"Error while streaming tts to {coro}: {e}")
-            raise e
+            if try_backup and self.backup_tts_providers:
+                logger.error(f"Error while streaming tts to {coro}: {e}; trying backup")
+                await self.rotate_tts_provider()
+                coro = coro_factory()
+                await self.tts_stream_to(text, coro, try_backup=False)
+            else:
+                logger.error(f"Error while streaming tts to {coro}: {e}; no backup available")
+                raise
         finally:
             await coro.aclose()
 

@@ -217,18 +217,18 @@ class Server:
         """
         speak the text
         """
-        coro = self._speak()
         key = self.audio_cache.make_key(text, self.agent.tts_provider.tts_footprint)
         cached_chunks = await self.audio_cache.get(key)
         
         try:
             if cached_chunks:
                 logger.info(f"Using cached audio for text: {text[:50]}... ({len(cached_chunks)} chunks)")
+                coro = self._speak()
                 await coro.asend(None)  # initialize the coroutine
                 for chunk in cached_chunks:
                     await coro.asend(chunk)      
             else:
-                await self.agent.tts_stream_to(text, coro, try_backup=True)
+                await self.agent.tts_stream_to(text, self._speak, try_backup=True)
                 logger.info(f"Finished speaking")
                 await self.audio_cache.set(key, self.__last_ai_pcm16_chunks)
                 logger.info(f"Cached audio for {text}, {len(self.__last_ai_pcm16_chunks)} bytes")
