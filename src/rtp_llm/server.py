@@ -152,7 +152,8 @@ class Server:
                     if len(buffer_audio) < self.processed_bytes + self.vad_interval_bytes: # ensure to not check the same interval multiple times
                         continue
                     if is_speaking and not allow_interruptions:
-                        #NOTE: user speech will be saved in the buffer
+                        #NOTE: user speech will be saved in the buffer but not processed
+                        self.processed_bytes += self.vad_interval_bytes
                         continue
                     last_chunk_audio = buffer_audio[self.processed_bytes:self.processed_bytes + self.vad_interval_bytes] # cutting last interval of audio
                     self.processed_bytes += self.vad_interval_bytes
