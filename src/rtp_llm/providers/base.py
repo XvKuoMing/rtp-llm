@@ -96,22 +96,30 @@ class MetaProvider(ABCMeta):
 
 
 class BaseTTSProvider(ABC, metaclass=MetaProvider):
+    """
+    must produce output in pcm format
+    """
 
 
     @abstractmethod
     def __init__(self, 
                  *args,
-                 pcm_response_format: Optional[str] = None,
-                 response_sample_rate: Optional[int] = None,
                  gen_config: Optional[Dict[str, Any]] = None,
                  **kwargs):
         """
         pcm_response_format: The pcm format of the response from the tts_provider; pcm for openai, pcm_24000 for elevenlabs
         response_sample_rate: The sample rate of the response from the tts_provider.
         """
-        self.pcm_response_format = pcm_response_format
-        self.response_sample_rate = response_sample_rate
         self.tts_gen_config = gen_config or {}
+    
+
+    @property
+    @abstractmethod
+    def response_sample_rate(self) -> int:
+        """
+        Get the sample rate of the response from the tts_provider.
+        """
+        pass
     
 
     @property
@@ -119,7 +127,7 @@ class BaseTTSProvider(ABC, metaclass=MetaProvider):
         """
         A string that uniquely identifies the tts_provider.
         """
-        return f"{self.pcm_response_format}_{self.response_sample_rate}_{str(self.tts_gen_config)}"
+        return f"{self.response_sample_rate}_{str(self.tts_gen_config)}"
 
     @abstractmethod
     def get_tts_gen_config_info(self) -> Set[str]:

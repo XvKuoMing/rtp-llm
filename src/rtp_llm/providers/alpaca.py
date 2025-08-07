@@ -50,7 +50,6 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
                  stt_model: Optional[str] = "gpt-4o-mini-audio-preview",
                  tts_model: Optional[str] = "gpt-4o-mini-tts",
                  system_prompt: Optional[str] = None,
-                 response_sample_rate: Optional[int] = None,
                  tts_gen_config: Optional[Dict[str, Any]] = None,
                  stt_gen_config: Optional[Dict[str, Any]] = None,
                  tts_voice: Optional[str] = None,
