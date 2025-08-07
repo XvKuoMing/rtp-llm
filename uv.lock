@@ -1069,6 +1069,7 @@ dependencies = [
     { name = "soundfile" },
     { name = "uvicorn" },
     { name = "webrtcvad" },
+    { name = "websockets" },
 ]
 
 [package.optional-dependencies]
@@ -1082,7 +1083,6 @@ tests = [
     { name = "httpx" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
-    { name = "python-dotenv" },
 ]
 
 [package.metadata]
@@ -1099,7 +1099,6 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'tests'", specifier = ">=8.4.0" },
     { name = "pytest-asyncio", marker = "extra == 'tests'", specifier = ">=1.0.0" },
     { name = "python-dotenv", specifier = ">=1.1.0" },
-    { name = "python-dotenv", marker = "extra == 'tests'", specifier = "==1.1.0" },
     { name = "redis", extras = ["hiredis"], marker = "extra == 'redis'", specifier = ">=6.2.0" },
     { name = "scipy", specifier = ">=1.10" },
     { name = "setuptools", specifier = "==80.0.1" },
@@ -1108,6 +1107,7 @@ requires-dist = [
     { name = "soundfile", specifier = "==0.13.1" },
     { name = "uvicorn", specifier = "==0.34.2" },
     { name = "webrtcvad", specifier = "==2.0.10" },
+    { name = "websockets", specifier = ">=15.0.1" },
 ]
 provides-extras = ["tests", "local", "redis"]
 

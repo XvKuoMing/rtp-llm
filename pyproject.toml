@@ -38,6 +38,7 @@ dependencies = [
     "audioop-lts; python_version>='3.13'",
     "opuslib>=3.0.1",
     "python-dotenv>=1.1.0",
+    "websockets>=15.0.1",
 ]
 
 # Optional dependencies (extras)
