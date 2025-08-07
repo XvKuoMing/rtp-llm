@@ -6,7 +6,7 @@ from openai.types.audio import Transcription
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
 # from openai.types import AsyncResponseContextManager, AsyncStreamedBinaryAPIResponse, HttpxBinaryResponseContent
 
-from typing import AsyncGenerator, Any, Optional, Union, List, Dict
+from typing import AsyncGenerator, Any, Optional, Union, List, Dict, Set
 import base64
 
 
@@ -41,13 +41,15 @@ valid_stt_config = {"temperature", "top_p"}
 
 class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
 
+    pcm_response_format = "pcm" # openai pcm format for tts
+    response_sample_rate = 24000 # openai pcm format sample rate for tts
+
     def __init__(self, 
                  api_key: Optional[str] = None, 
                  base_url: Optional[str] = None, 
                  stt_model: Optional[str] = "gpt-4o-mini-audio-preview",
                  tts_model: Optional[str] = "gpt-4o-mini-tts",
                  system_prompt: Optional[str] = None,
-                 pcm_response_format: Optional[str] = None,
                  response_sample_rate: Optional[int] = None,
                  tts_gen_config: Optional[Dict[str, Any]] = None,
                  stt_gen_config: Optional[Dict[str, Any]] = None,
@@ -64,13 +66,9 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
         self.stt_model = stt_model
         self.tts_model = tts_model
         self.system_prompt = system_prompt or "You are a helpful assistant."
-        self.pcm_response_format = pcm_response_format
-        self.response_sample_rate = response_sample_rate
         self.tts_gen_config = tts_gen_config
         self.stt_gen_config = stt_gen_config
         self.tts_voice = tts_voice or "alloy" # required for openai tts
-        # super(BaseTTSProvider, self).__init__(pcm_response_format, response_sample_rate, tts_gen_config)
-        # super(BaseSTTProvider, self).__init__(system_prompt, stt_gen_config)
 
         self.stt_api_key = overwrite_stt_model_api_key or api_key
         self.stt_base_url = overwrite_stt_model_base_url or base_url
@@ -99,18 +97,18 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
     def tts_footprint(self) -> str:
         return f"{self.pcm_response_format}_{self.response_sample_rate}_{self.tts_voice}_{self.tts_model}"
 
-
-    def validate_stt_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+    
+    def get_stt_gen_config_info(self) -> Set[str]:
         """
-        invalidate wrong params from config, return only valid params
-        """        
-        return {k: v for k, v in config.items() if k in valid_stt_config}
-
-    def validate_tts_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        Get the stt_config info of the provider -> name and default value
         """
-        invalidate wrong params from config, return only valid params
+        return {"temperature", "top_p"}
+    
+    def get_tts_gen_config_info(self) -> Set[str]:  
         """
-        return {k: v for k, v in config.items() if k in valid_tts_config}
+        Get the tts_config info of the provider -> name and default value
+        """
+        return {"speed", "instructions"}
 
     @property
     def formatted_system_prompt(self) -> Optional[str]:
@@ -188,6 +186,8 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
 class AstLLmProvider(OpenAIProvider):
     def __init__(self,  
                  *args,
+                 pcm_response_format: Optional[str] = None,
+                 response_sample_rate: Optional[int] = None,
                  ast_model: Optional[str] = "openai/whisper-large-v3-turbo",
                  overwrite_ast_model_api_key: Optional[str] = None,
                  overwrite_ast_model_base_url: Optional[str] = None,
@@ -198,6 +198,8 @@ class AstLLmProvider(OpenAIProvider):
         self.ast_model = ast_model
         self.ast_api_key = overwrite_ast_model_api_key or self.stt_api_key
         self.ast_base_url = overwrite_ast_model_base_url or self.stt_base_url
+        self.pcm_response_format = pcm_response_format or "pcm"
+        self.response_sample_rate = response_sample_rate or 24000
         if self.stt_api_key == self.ast_api_key and self.stt_base_url == self.ast_base_url:
             self.ast_client = self.stt_client # using transitive logic: stt > tts, tts > ast -> stt > ast
         else:

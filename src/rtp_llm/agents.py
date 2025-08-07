@@ -55,17 +55,26 @@ class VoiceAgent:
         return self.__history_manager
     
 
+    def __valide_config(self, config: Dict[str, Any], provider_type: Literal["stt", "tts"]):
+        """
+        Validate the config.
+        """
+        provider_config_info = self.stt_provider.get_stt_gen_config_info()\
+                               if provider_type == "stt" else self.tts_provider.get_tts_gen_config_info()
+        validated_config = {key: value for key, value in config.items() if key in provider_config_info}
+        return validated_config
+    
     def update_stt_config(self, config: Dict[str, Any]):
         """
         Update the stt_provider config.
         """
-        self.stt_provider.stt_gen_config = self.stt_provider.validate_stt_config(config) or {}
+        self.stt_provider.stt_gen_config = self.__valide_config(config, "stt")
     
     def update_tts_config(self, config: Dict[str, Any]):
         """
         Update the tts_provider config.
         """
-        self.tts_provider.tts_gen_config = self.tts_provider.validate_tts_config(config) or {}
+        self.tts_provider.tts_gen_config = self.__valide_config(config, "tts")
     
 
     async def add_message(self, message: Message, is_user: bool, is_audio: bool = False):

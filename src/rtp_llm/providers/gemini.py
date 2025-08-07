@@ -2,15 +2,16 @@ from .base import BaseSTTProvider, Message
 
 from google import genai
 from google.genai import types
-from typing import Optional, Any, List, AsyncGenerator, Dict
+from typing import Optional, Any, List, AsyncGenerator, Dict, Set
 
 valid_stt_config = {"temperature", "top_p", "top_k"}
 
 
-class GeminiSTTProvider(BaseSTTProvider):
+class GeminiProvider(BaseSTTProvider):
     """
     it provides only stt capabilities
     """
+
     def __init__(self, 
                  api_key: str, 
                  model: str, 
@@ -30,11 +31,12 @@ class GeminiSTTProvider(BaseSTTProvider):
                 http_options=types.HttpOptions(base_url=self.base_url)
             )
     
-    def validate_stt_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+    
+    def get_stt_gen_config_info(self) -> Set[str]:
         """
-        invalidate wrong params from config, return only valid params
+        Get the stt_config info of the provider -> name and default value
         """
-        return {k: v for k, v in config.items() if k in valid_stt_config}
+        return {"temperature", "top_p", "top_k"}
         
     async def format(self, message: Message) -> Any:
         if message.data_type == "text":

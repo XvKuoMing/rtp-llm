@@ -1,9 +1,7 @@
-from abc import ABC, abstractmethod
-from typing import Union, AsyncGenerator, Any, Optional, Dict
+from abc import ABC, abstractmethod, ABCMeta
+from typing import Union, AsyncGenerator, Any, Optional, Dict, Set
 from dataclasses import dataclass
-
-
-# TODO: add limits awareness to the providers, so the backup will be used if some providers reached limits of active requests
+import inspect
 
 @dataclass(frozen=True)
 class Message:
@@ -16,7 +14,89 @@ class Message:
             raise ValueError(f"Invalid data type: {self.data_type}")
 
 
-class BaseTTSProvider(ABC):
+class MetaProvider(ABCMeta):
+    # Registry to store all provider classes by their name_tag
+    _provider_registry = {}
+    
+    def __new__(cls, name, bases, attrs):
+        cls = super().__new__(cls, name, bases, attrs)
+        if not hasattr(cls, "name_tag"):
+            cls.name_tag = cls.__name__.lower().replace("provider", "")
+        
+        # Register the provider in the registry (skip base classes)
+        if name not in ['BaseTTSProvider', 'BaseSTTProvider']:
+            MetaProvider._provider_registry[cls.name_tag] = cls
+            
+        return cls
+    
+    @classmethod
+    def get_provider(cls, name_tag: str):
+        """Get a provider class by its name_tag. Returns None if not found."""
+        return cls._provider_registry.get(name_tag)
+    
+    @classmethod
+    def provider_exists(cls, name_tag: str) -> bool:
+        """Check if a provider with the given name_tag exists."""
+        return name_tag in cls._provider_registry
+    
+    @classmethod
+    def list_providers(cls) -> Dict[str, type]:
+        """Get all registered providers as a dict of {name_tag: provider_class}."""
+        return cls._provider_registry.copy()
+    
+    @classmethod
+    def create_provider_from_config(cls, name_tag: str, config: Dict[str, Any]) -> Any:
+        """
+        Create a provider from a config.
+        """
+        provider_class = cls.get_provider(name_tag)
+        if provider_class is None:
+            raise ValueError(f"Provider {name_tag} not found")
+        return provider_class(**config)
+    
+    @classmethod
+    def get_providers_arg_info(cls, name_tag: str) -> Dict[str, Any]:
+        """
+        Get the argument info of the provider's __init__ method.
+        """
+        provider_class = cls.get_provider(name_tag)
+        if provider_class is None:
+            raise ValueError(f"Provider {name_tag} not found")
+        gen_config_info = set()
+        if issubclass(provider_class, BaseTTSProvider):
+            gen_config_info = provider_class.get_tts_gen_config_info()
+        elif issubclass(provider_class, BaseSTTProvider):
+            gen_config_info = provider_class.get_stt_gen_config_info()
+        else:
+            raise ValueError(f"Provider {name_tag} is not a TTS or STT provider")
+        
+        # Get the __init__ method signature
+        sig = inspect.signature(provider_class.__init__)
+        init_args_info = {}
+        
+        for param_name, param in sig.parameters.items():
+            if param_name not in ["self", "args", "kwargs", "gen_config"]:
+                param_type = param.annotation if param.annotation != inspect.Parameter.empty else "Any"
+                init_args_info[param_name] = param_type
+        
+        # Add gen_config info separately since it contains nested config options
+        init_args_info["gen_config"] = gen_config_info
+        
+        return init_args_info
+    
+    @classmethod
+    def get_all_providers_arg_info(cls) -> Dict[str, Any]:
+        """
+        Get the config info of all providers.
+        """
+        all_config_info = {}
+        for name_tag in cls._provider_registry:
+            all_config_info[name_tag] = cls.get_providers_arg_info(name_tag)
+        return all_config_info
+
+
+class BaseTTSProvider(ABC, metaclass=MetaProvider):
+
 
     @abstractmethod
     def __init__(self, 
@@ -40,14 +120,13 @@ class BaseTTSProvider(ABC):
         A string that uniquely identifies the tts_provider.
         """
         return f"{self.pcm_response_format}_{self.response_sample_rate}_{str(self.tts_gen_config)}"
-    
 
     @abstractmethod
-    def validate_tts_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+    def get_tts_gen_config_info(self) -> Set[str]:
         """
-        invalidate wrong params from config, return only valid
+        Get the tts_config info of the provider -> name and default value
         """
-        return config
+        pass
 
 
     @abstractmethod
@@ -69,7 +148,7 @@ class BaseTTSProvider(ABC):
         raise NotImplementedError("Streaming is not supported for this STT provider")
 
 
-class BaseSTTProvider(ABC):
+class BaseSTTProvider(ABC, metaclass=MetaProvider):
 
     @abstractmethod
     def __init__(self, 
@@ -80,13 +159,13 @@ class BaseSTTProvider(ABC):
         self.system_prompt = system_prompt
         self.stt_gen_config = gen_config or {}
 
+    
     @abstractmethod
-    def validate_stt_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+    def get_stt_gen_config_info(self) -> Set[str]:
         """
-        invalidate wrong params from config, return only valid
+        Get the stt_config info of the provider -> name and default value
         """
-        return config
-
+        ...
 
     @abstractmethod
     async def format(self, message: Message) -> Any:

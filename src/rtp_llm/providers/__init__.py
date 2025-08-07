@@ -1,14 +1,15 @@
-from .base import BaseTTSProvider, BaseSTTProvider, Message
+from .base import BaseTTSProvider, BaseSTTProvider, Message, MetaProvider
 from .alpaca import AstLLmProvider, OpenAIProvider, TextOpenAIMessage, AudioOpenAIMessage
-from .gemini import GeminiSTTProvider
+from .gemini import GeminiProvider
 
 __all__ = [
     "BaseTTSProvider", 
     "BaseSTTProvider", 
     "Message", 
+    "MetaProvider",
     "AstLLmProvider", 
     "OpenAIProvider", 
-    "GeminiSTTProvider",
+    "GeminiProvider",
     "TextOpenAIMessage",
     "AudioOpenAIMessage"
     ]
