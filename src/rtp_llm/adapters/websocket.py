@@ -33,7 +33,7 @@ class WebSocketAdapter(Adapter):
         self.audio_queue = asyncio.Queue()
         self.is_running = False
         self.chunk_size = int(sample_rate * 0.02 * 2)  # 20ms chunks in bytes (PCM16 = 2 bytes per sample)
-        
+        self.__start_server() # autostart
         logger.info(f"WebSocketAdapter initialized: {host}:{port}, sample_rate={sample_rate}, chunk_size={self.chunk_size}")
 
     @property
@@ -45,7 +45,7 @@ class WebSocketAdapter(Adapter):
                 not self.connected_client.closed and 
                 self.is_running)
 
-    async def start_server(self):
+    async def __start_server(self):
         """Start the WebSocket server and wait for client connections"""
         if self.websocket_server is not None:
             logger.warning("WebSocket server is already running")
