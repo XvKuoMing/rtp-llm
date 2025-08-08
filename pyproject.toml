@@ -28,6 +28,7 @@ dependencies = [
     "numpy>=1.22",
     "openai==1.76.0",
     "pydantic==2.11.3",
+    "pydantic-settings>=2.5.2",
     "scipy>=1.10",
     "setuptools==80.0.1",
     "silero-vad>=5.1.2",
@@ -36,9 +37,9 @@ dependencies = [
     "webrtcvad==2.0.10",
     # Conditional dependencies using environment markers # audiopp was deprecated in python 3.13
     "audioop-lts; python_version>='3.13'",
-    "opuslib>=3.0.1",
-    "python-dotenv>=1.1.0",
+    "opuslib>=3.0.0",
     "websockets>=15.0.1",
+    "redis[hiredis]>=6.2.0",
 ]
 
 # Optional dependencies (extras)
@@ -50,17 +51,10 @@ tests = [
     "httpx>=0.28.1",
 ]
 
-local = [
-    "sounddevice>=0.4.6"
-]
-
-redis = [
-    "redis[hiredis]>=6.2.0"
-]
 
 # CLI entry points
 [project.scripts]
-serve-multi-rtp = "entrypoints.multi_api:main"
+rtllm = "entrypoint.rtllm:main"
 
 # Package URLs
 [project.urls]
@@ -71,7 +65,7 @@ serve-multi-rtp = "entrypoints.multi_api:main"
 # setuptools configuration
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["rtp_llm*", "entrypoints*"]
+include = ["rtp_llm*", "entrypoint*"]
 namespaces = false
 
 [tool.setuptools.package-data]
