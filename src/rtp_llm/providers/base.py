@@ -18,16 +18,20 @@ class MetaProvider(ABCMeta):
     # Registry to store all provider classes by their name_tag
     _provider_registry = {}
     
-    def __new__(cls, name, bases, attrs):
-        cls = super().__new__(cls, name, bases, attrs)
-        if not hasattr(cls, "name_tag"):
-            cls.name_tag = cls.__name__.lower().replace("provider", "")
+    def __new__(metacls, name, bases, attrs):
+        # Create the new class first
+        new_cls = super().__new__(metacls, name, bases, attrs)
+        
+        # Only set name_tag if it's defined directly on the class, not inherited
+        # This ensures each subclass gets its own tag derived from its own name
+        if "name_tag" not in attrs:
+            new_cls.name_tag = name.lower().replace("provider", "")
         
         # Register the provider in the registry (skip base classes)
         if name not in ['BaseTTSProvider', 'BaseSTTProvider']:
-            MetaProvider._provider_registry[cls.name_tag] = cls
+            MetaProvider._provider_registry[new_cls.name_tag] = new_cls
             
-        return cls
+        return new_cls
     
     @classmethod
     def get_provider(cls, name_tag: str):
@@ -51,7 +55,7 @@ class MetaProvider(ABCMeta):
         """
         provider_class = cls.get_provider(name_tag)
         if provider_class is None:
-            raise ValueError(f"Provider {name_tag} not found")
+            raise ValueError(f"Provider {name_tag} not found; available providers: {cls.list_providers()}")
         return provider_class(**config)
     
     @classmethod
