@@ -1,4 +1,4 @@
-ARG PYTHON_VERSION=3.12
+ARG PYTHON_VERSION=3.11
 
 FROM ghcr.io/astral-sh/uv:0.5.12-python${PYTHON_VERSION}-bookworm AS uv
 
@@ -13,7 +13,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy project metadata and sources
 COPY pyproject.toml uv.lock ./
 COPY src ./src
-COPY examples ./examples
 
 # Create and cache virtualenv with uv
 RUN uv venv --seed && \
@@ -23,6 +22,7 @@ RUN uv venv --seed && \
 # App runtime
 ENV PATH="/app/.venv/bin:${PATH}"
 ENV PYTHONUNBUFFERED=1
+ENV UV_COMPILE_BYTECODE=1
 ENV RTLLM_HOST=0.0.0.0 \
     RTLLM_PORT=8000 \
     RTLLM_START_PORT=10000 \

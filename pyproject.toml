@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rtp_llm"
-version = "0.1.0"
+version = "1.0.0"
 description = "simple building blocks for creating real-time agents"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -24,15 +24,15 @@ classifiers = [
 dependencies = [
     "fastapi==0.115.12",
     "google-genai==1.14.0",
-    "jinja2==3.1.6",
     "numpy>=1.22",
     "openai==1.76.0",
     "pydantic==2.11.3",
     "pydantic-settings>=2.5.2",
     "scipy>=1.10",
     "setuptools==80.0.1",
+    "torch>=2.8.0",
+    "torchaudio>=2.8.0",
     "silero-vad>=5.1.2",
-    "soundfile==0.13.1",
     "uvicorn==0.34.2",
     "webrtcvad==2.0.10",
     # Conditional dependencies using environment markers # audiopp was deprecated in python 3.13
@@ -51,6 +51,14 @@ tests = [
     "httpx>=0.28.1",
 ]
 
+[tool.uv.sources]
+torch = { index = "pytorch" }
+torchaudio = { index = "pytorch" }
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 # CLI entry points
 [project.scripts]
