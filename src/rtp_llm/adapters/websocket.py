@@ -33,8 +33,19 @@ class WebSocketAdapter(Adapter):
         self.audio_queue = asyncio.Queue()
         self.is_running = False
         self.chunk_size = int(sample_rate * 0.02 * 2)  # 20ms chunks in bytes (PCM16 = 2 bytes per sample)
-        self.__start_server() # autostart
+        # Autostart the websocket server in the background
+        asyncio.get_running_loop()
+        asyncio.create_task(self.__start_server())
         logger.info(f"WebSocketAdapter initialized: {host}:{port}, sample_rate={sample_rate}, chunk_size={self.chunk_size}")
+
+    # Compatibility with RTPAdapter interface used by ServerManager
+    @property
+    def host_ip(self) -> str:
+        return self.host
+
+    @property
+    def host_port(self) -> int:
+        return self.port
 
     @property
     def peer_is_configured(self) -> bool:

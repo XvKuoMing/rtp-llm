@@ -189,7 +189,7 @@ class ServerManager:
             stt_providers=self.stt_providers[0],
             tts_providers=self.tts_providers[0],
             history_limiter=ChatHistoryLimiter(
-                max_history=chat_limit,
+                limit=chat_limit,
             ),
             backup_stt_providers=self.stt_providers[1:] if len(self.stt_providers) > 1 else None,
             backup_tts_providers=self.tts_providers[1:] if len(self.tts_providers) > 1 else None,
