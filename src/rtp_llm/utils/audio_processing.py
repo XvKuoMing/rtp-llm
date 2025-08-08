@@ -14,8 +14,8 @@ logger.setLevel(logging.INFO)
 
 try:
     import opuslib
-except Exception as e:
-    logger.error(f"Error importing opuslib: {e}")
+except Exception:
+    # Opus is optional; only required when OPUS codec is used.
     opuslib = None
 
 async def pcm2wav(pcm16: bytes, sample_rate: int = 8000) -> bytes:
@@ -49,6 +49,8 @@ async def pcm2alaw(pcm16: bytes) -> bytes:
 
 async def pcm2opus(pcm16: bytes, sample_rate: int = 8000) -> bytes:
     """convert pcm16 to opus"""
+    if opuslib is None:
+        raise RuntimeError("Opus support is not available. Install 'opuslib' and libopus to use OPUS codec.")
     encoder = opuslib.Encoder(sample_rate, channels=1)
     return encoder.encode(pcm16, frame_size=sample_rate//50)
 
@@ -117,6 +119,8 @@ async def alaw2pcm(alaw: bytes) -> bytes:
 async def opus2pcm(opus: bytes, sample_rate: int = 8000) -> bytes:
     """convert opus to pcm16"""
     try:
+        if opuslib is None:
+            raise RuntimeError("Opus support is not available. Install 'opuslib' and libopus to decode OPUS audio.")
         # Create Opus decoder
         decoder = opuslib.Decoder(sample_rate, channels=1)
         
