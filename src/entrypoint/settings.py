@@ -32,4 +32,13 @@ class AppSettings(BaseSettings):
     redis_password: Optional[str] = Field(default=None)
     redis_ttl_seconds: Optional[int] = Field(default=None)
 
+    # Concurrency for audio file parsing
+    max_concurrent_files: int = Field(default=50)
+
+    # CORS defaults
+    cors_allow_origins: list[str] = Field(default_factory=lambda: ["*"])
+    cors_allow_methods: list[str] = Field(default_factory=lambda: ["*"])
+    cors_allow_headers: list[str] = Field(default_factory=lambda: ["*"])
+    cors_allow_credentials: bool = Field(default=True)
+
 

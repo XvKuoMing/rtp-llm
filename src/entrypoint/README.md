@@ -141,8 +141,9 @@ Manages audio file operations:
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/audio/` | GET | List available audio files with filtering/pagination |
-| `/audio/files/{filename}` | GET | Download specific audio file |
-| `/audio/files/{filename}` | DELETE | Delete specific audio file |
+| `/audio/{filename}` | GET | Download specific audio file |
+| `/audio/{filename}/info` | GET | Get metadata for a specific audio file |
+| `/audio/{filename}` | DELETE | Delete specific audio file |
 
 ### 4. Main Entry Point (`rtllm.py`)
 
@@ -232,32 +233,40 @@ server_config = ServerConfig(
 )
 ```
 
-## 🌐 API Usage Examples
+## 🌐 API Usage Examples (with example outputs)
 
-### Starting a Server
+### Start Server
 
+Request:
 ```bash
-curl -X POST "http://localhost:8000/server/start" \
+curl -s -X POST "http://localhost:8000/server/start" \
      -H "Content-Type: application/json" \
      -d '{
        "uid": "test-server",
        "sample_rate": 16000,
-       "adapter": {
-         "adapter_type": "websocket",
-         "target_codec": "pcm"
-       },
-       "vad": {
-         "vad_type": "webrtc",
-         "min_speech_duration_ms": 500,
-         "config": {"aggressiveness": 2}
-       }
+       "adapter": {"adapter_type": "websocket", "target_codec": "pcm"},
+       "vad": {"vad_type": "webrtc", "min_speech_duration_ms": 500, "config": {"aggressiveness": 2}}
      }'
 ```
+Example success response:
+```json
+{
+  "success": true,
+  "message": null,
+  "host_ip": "192.168.1.10",
+  "host_port": 14532
+}
+```
+Example error (conflict):
+```json
+{ "detail": "Server with uid test-server already exists" }
+```
 
-### Running a Server
+### Run Server
 
+Request:
 ```bash
-curl -X POST "http://localhost:8000/server/run" \
+curl -s -X POST "http://localhost:8000/server/run" \
      -H "Content-Type: application/json" \
      -d '{
        "uid": "test-server",
@@ -269,16 +278,175 @@ curl -X POST "http://localhost:8000/server/run" \
        "tts_volume": 1.0
      }'
 ```
+Example success response:
+```json
+{ "success": true, "message": null }
+```
+Example error (conflict):
+```json
+{ "detail": "Server with uid test-server is already running" }
+```
 
-### Updating Providers
+### Update Agent
 
+Request body model: `UpdateAgentRequest`
+
+Request:
 ```bash
-curl -X POST "http://localhost:8000/config/providers" \
+curl -s -X POST "http://localhost:8000/server/update_agent" \
      -H "Content-Type: application/json" \
      -d '{
-       "stt_providers": [...],
-       "tts_providers": [...]
+       "uid": "test-server",
+       "system_prompt": "You are a helpful assistant.",
+       "tts_gen_config": {"voice": "alloy"},
+       "stt_gen_config": {"language": "en"}
      }'
+```
+Example success response:
+```json
+{ "success": true, "message": null }
+```
+Example error (not found):
+```json
+{ "detail": "Server with uid test-server not found" }
+```
+
+### Stop Server
+
+Request body model: `StopServerRequest`
+
+Request:
+```bash
+curl -s -X POST "http://localhost:8000/server/stop" \
+     -H "Content-Type: application/json" \
+     -d '{"uid": "test-server"}'
+```
+Example success response:
+```json
+{ "success": true, "message": null }
+```
+Example error (not found):
+```json
+{ "detail": "Server with uid test-server not found" }
+```
+
+### Get Providers Configuration
+
+Request:
+```bash
+curl -s "http://localhost:8000/config/providers"
+```
+Example response:
+```json
+{
+  "stt_providers": [
+    {"name": "gemini", "model": "gemini-2.0-flash-exp", "base_url": "https://..."}
+  ],
+  "tts_providers": [
+    {"name": "openai", "tts_model": "gpt-4o-mini-tts", "base_url": "https://..."}
+  ]
+}
+```
+
+### Update Providers Configuration
+
+Request:
+```bash
+curl -s -X POST "http://localhost:8000/config/providers" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "stt_providers": [{"name": "gemini", "api_key": "..."}],
+       "tts_providers": [{"name": "openai", "api_key": "..."}]
+     }'
+```
+Example success response:
+```json
+{ "success": true, "message": null }
+```
+Example error (misconfiguration):
+```json
+{ "detail": "Failed to create TTS provider 'openai': ..." }
+```
+
+### List Audio Files
+
+Request:
+```bash
+curl -s "http://localhost:8000/audio?page=1&page_size=2&sort_by=timestamp_desc"
+```
+Example response:
+```json
+{
+  "audio_files": [
+    {
+      "filename": "test-server_conversation_1736000000.0.wav",
+      "uid": "test-server",
+      "conversation_timestamp": 1736000000.0,
+      "file_size": 12345,
+      "duration_seconds": 1.23,
+      "sample_rate": 16000,
+      "channels": 1,
+      "created_date": "2024-12-05T12:00:00",
+      "file_path": "/abs/path/audio_logs/test-server_conversation_1736000000.0.wav"
+    }
+  ],
+  "total_count": 1,
+  "page": 1,
+  "page_size": 2,
+  "total_pages": 1
+}
+```
+Example error (bad date):
+```json
+{ "detail": "Invalid date_from format. Use ISO format: 2024-01-01T00:00:00" }
+```
+
+### Get Audio Metadata
+
+Request:
+```bash
+curl -s "http://localhost:8000/audio/test-server_conversation_1736000000.0.wav/info"
+```
+Example response:
+```json
+{
+  "filename": "test-server_conversation_1736000000.0.wav",
+  "uid": "test-server",
+  "conversation_timestamp": 1736000000.0,
+  "file_size": 12345,
+  "duration_seconds": 1.23,
+  "sample_rate": 16000,
+  "channels": 1,
+  "created_date": "2024-12-05T12:00:00",
+  "file_path": "/abs/path/audio_logs/test-server_conversation_1736000000.0.wav"
+}
+```
+Example error (not found):
+```json
+{ "detail": "Audio file not found" }
+```
+
+### Download Audio
+
+Request:
+```bash
+curl -sOJ "http://localhost:8000/audio/test-server_conversation_1736000000.0.wav"
+```
+Response: returns the WAV file as attachment.
+
+### Delete Audio
+
+Request:
+```bash
+curl -s -X DELETE "http://localhost:8000/audio/test-server_conversation_1736000000.0.wav"
+```
+Example success response:
+```json
+{ "message": "Audio file test-server_conversation_1736000000.0.wav deleted successfully" }
+```
+Example error (conflict):
+```json
+{ "detail": "Cannot delete audio file: Server for UID test-server is currently running" }
 ```
 
 ## 🔍 Health Check
@@ -321,10 +489,20 @@ python -m src.entrypoint.rtllm --debug
 ## 📝 Development Notes
 
 - All async operations are handled properly
-- Error handling includes proper HTTP status codes
+- Error handling includes proper HTTP status codes and unified JSON error body
 - CORS is configured for cross-origin requests
 - Redis integration is optional and gracefully degrades
 - Port management prevents conflicts between server instances
+
+### Error Handling
+
+The API maps domain errors to HTTP status codes:
+
+- Validation errors → 400
+- Not-found errors → 404
+- Conflicts (e.g. server already running) → 409
+- Misconfiguration (e.g. invalid providers) → 422
+- Unhandled domain errors → 500
 
 ## 🔮 Future Enhancements
 

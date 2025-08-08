@@ -19,27 +19,36 @@ from rtp_llm.cache.rredis import RedisAudioCache
 from rtp_llm.audio_logger import AUDIO_LOGS_DIR
 
 from .utils.port_manager import PortManager
+from .exceptions import (
+    ValidationError,
+    NotFoundError,
+    ResourceConflictError,
+    ConfigurationError,
+)
 from .utils.audio_logs import get_audio_file_info, parse_audio_filename
 from .models import HostServerConfig, ReusableComponents, ServerConfig, RunParams
+from .utils.logging_utils import sanitize_for_logging, to_json_for_logging
 from .models.audio import AudioFileInfo, AudioListResponse
 
 
 
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 
 class ServerManager:
 
     def __init__(self, 
                  host_config: HostServerConfig,
-                 reusable_components: ReusableComponents):
+                 reusable_components: ReusableComponents,
+                 *,
+                 max_concurrent_files: int = 50):
         """
         all reusable components are initialized here
         """
         self.host_config = host_config
         self.reusable_components = reusable_components
+        self.max_concurrent_files = max_concurrent_files
 
         self.port_manager = PortManager(
             start_port=host_config.start_port,
@@ -69,6 +78,11 @@ class ServerManager:
             if target_path.exists():
                 with target_path.open("r", encoding="utf-8") as f:
                     self.__providers_config = json.load(f)
+                    logger.debug(
+                        "Loaded providers config from %s:\n%s",
+                        str(target_path),
+                        to_json_for_logging(sanitize_for_logging(self.__providers_config), indent=2),
+                    )
             else:
                 # Try to locate repo example: ../../examples/providers.json relative to this file
                 try_example = (Path(__file__).resolve().parents[2] / "examples" / "providers.json")
@@ -92,12 +106,50 @@ class ServerManager:
             target_path.parent.mkdir(parents=True, exist_ok=True)
             with target_path.open("w", encoding="utf-8") as f:
                 json.dump(self.__providers_config, f)
+            logger.debug(
+                "Updated providers config at %s:\n%s",
+                str(target_path),
+                to_json_for_logging(sanitize_for_logging(self.__providers_config), indent=2),
+            )
         
         if self.__providers_config and "stt_providers" in self.__providers_config:
-            self.__providers["stt"] = [MetaProvider.create_provider_from_config(provider.pop("name"), provider) for provider in self.__providers_config["stt_providers"]]
+            stt_instances = []
+            for provider_cfg in self.__providers_config["stt_providers"]:
+                name = provider_cfg.get("name")
+                if not name:
+                    raise ConfigurationError("STT provider entry missing 'name'")
+                # Work on a shallow copy to avoid mutating source config
+                cfg_copy = {k: v for k, v in provider_cfg.items() if k != "name"}
+                try:
+                    instance = MetaProvider.create_provider_from_config(name, cfg_copy)
+                    stt_instances.append(instance)
+                    logger.info(
+                        "Initialized STT provider: name=%s class=%s",
+                        name,
+                        instance.__class__.__name__,
+                    )
+                except Exception as e:
+                    raise ConfigurationError(f"Failed to create STT provider '{name}': {e}")
+            self.__providers["stt"] = stt_instances
         
         if self.__providers_config and "tts_providers" in self.__providers_config:
-            self.__providers["tts"] = [MetaProvider.create_provider_from_config(provider.pop("name"), provider) for provider in self.__providers_config["tts_providers"]]
+            tts_instances = []
+            for provider_cfg in self.__providers_config["tts_providers"]:
+                name = provider_cfg.get("name")
+                if not name:
+                    raise ConfigurationError("TTS provider entry missing 'name'")
+                cfg_copy = {k: v for k, v in provider_cfg.items() if k != "name"}
+                try:
+                    instance = MetaProvider.create_provider_from_config(name, cfg_copy)
+                    tts_instances.append(instance)
+                    logger.info(
+                        "Initialized TTS provider: name=%s class=%s",
+                        name,
+                        instance.__class__.__name__,
+                    )
+                except Exception as e:
+                    raise ConfigurationError(f"Failed to create TTS provider '{name}': {e}")
+            self.__providers["tts"] = tts_instances
     
     def __load_redis(self):
         if not self.reusable_components.redis:
@@ -144,7 +196,14 @@ class ServerManager:
         )
 
     def start_server(self, server_config: ServerConfig) -> Tuple[str, int]:
-        host_port = self.port_manager.get_available_port(server_config.uid) 
+        # Prevent accidental overwrite of an existing server instance
+        if server_config.uid in self.__servers:
+            raise ResourceConflictError(f"Server with uid {server_config.uid} already exists")
+
+        try:
+            host_port = self.port_manager.get_available_port(server_config.uid)
+        except RuntimeError as e:
+            raise ResourceConflictError(str(e))
         host_ip = self.port_manager.get_static_host_ip()
 
         if server_config.adapter.adapter_type == "rtp":
@@ -165,6 +224,8 @@ class ServerManager:
                 host=host_ip,
                 port=host_port,
             )
+        else:
+            raise ValidationError(f"Unsupported adapter type: {server_config.adapter.adapter_type}")
         
         if server_config.vad.vad_type == "webrtc":
             vad = WebRTCVAD(
@@ -178,10 +239,32 @@ class ServerManager:
                 min_speech_duration_ms=server_config.vad.min_speech_duration_ms,
                 **(server_config.vad.config or {}),
             )
+        else:
+            raise ValidationError(f"Unsupported VAD type: {server_config.vad.vad_type}")
+        logger.info(
+            "Initialized VAD: type=%s min_speech_duration_ms=%s extra=%s",
+            server_config.vad.vad_type,
+            server_config.vad.min_speech_duration_ms,
+            to_json_for_logging(sanitize_for_logging(server_config.vad.config or {})),
+        )
         
         agent = self.get_agent(server_config.chat_limit)
         if not agent:
-            raise ValueError("No STT/TTS providers configured")
+            raise ConfigurationError("No STT/TTS providers configured")
+        # Log agent composition
+        try:
+            stt_cls = agent.stt_provider.__class__.__name__
+            tts_cls = agent.tts_provider.__class__.__name__
+            logger.info(
+                "Initialized Agent: stt=%s tts=%s chat_limit=%s backups(stt=%d, tts=%d)",
+                stt_cls,
+                tts_cls,
+                server_config.chat_limit,
+                len(agent.backup_stt_providers),
+                len(agent.backup_tts_providers),
+            )
+        except Exception:
+            logger.info("Initialized Agent")
         
         server = Server(
             adapter=adapter,
@@ -202,7 +285,7 @@ class ServerManager:
 
     def stop_server(self, uid: Union[str, int]):
         if uid not in self.__servers:
-            raise ValueError(f"Server with uid {uid} not found")
+            raise NotFoundError(f"Server with uid {uid} not found")
 
         # Cancel running task if exists
         running_task = self.__running_servers.pop(uid, None)
@@ -219,7 +302,9 @@ class ServerManager:
 
     def run_server(self, run_params: RunParams):
         if run_params.uid not in self.__servers:
-            raise ValueError(f"Server with uid {run_params.uid} not found")
+            raise NotFoundError(f"Server with uid {run_params.uid} not found")
+        if self.is_server_running(run_params.uid):
+            raise ResourceConflictError(f"Server with uid {run_params.uid} is already running")
         
         server = self.__servers[run_params.uid]
         self.__running_servers[run_params.uid] = asyncio.create_task(server.run(
@@ -233,7 +318,7 @@ class ServerManager:
         
     def update_agent(self, uid: Union[str, int], system_prompt: str, tts_gen_config: Dict[str, Any], stt_gen_config: Dict[str, Any]):
         if uid not in self.__servers:
-            raise ValueError(f"Server with uid {uid} not found")
+            raise NotFoundError(f"Server with uid {uid} not found")
         
         server = self.__servers[uid]
         server.update_agent_config(
@@ -321,8 +406,7 @@ class ServerManager:
         audio_files_paths = await asyncio.to_thread(glob.glob, audio_pattern)
         
         # Parse file information in parallel with a semaphore to limit concurrency
-        MAX_CONCURRENT_FILES = 50  # Limit concurrent file operations #TODO: make it configurable
-        semaphore = asyncio.Semaphore(MAX_CONCURRENT_FILES)
+        semaphore = asyncio.Semaphore(self.max_concurrent_files)
         
         async def get_file_info_with_semaphore(filepath: str) -> Optional[AudioFileInfo]:
             async with semaphore:
@@ -356,14 +440,14 @@ class ServerManager:
                 date_from_ts = datetime.fromisoformat(date_from).timestamp()
                 filtered_files = [f for f in filtered_files if isinstance(f, AudioFileInfo) and f.conversation_timestamp >= date_from_ts]
             except ValueError:
-                raise ValueError("Invalid date_from format. Use ISO format: 2024-01-01T00:00:00")
+                raise ValidationError("Invalid date_from format. Use ISO format: 2024-01-01T00:00:00")
         
         if date_to:
             try:
                 date_to_ts = datetime.fromisoformat(date_to).timestamp()
                 filtered_files = [f for f in filtered_files if f.conversation_timestamp <= date_to_ts]
             except ValueError:
-                raise ValueError("Invalid date_to format. Use ISO format: 2024-01-01T23:59:59")
+                raise ValidationError("Invalid date_to format. Use ISO format: 2024-01-01T23:59:59")
         
         # Sort files
         if sort_by == "timestamp_asc":
@@ -379,7 +463,7 @@ class ServerManager:
         elif sort_by == "size_desc":
             filtered_files.sort(key=lambda x: x.file_size, reverse=True)
         else:
-            raise ValueError("Invalid sort_by parameter")
+            raise ValidationError("Invalid sort_by parameter")
         
         total_count = len(filtered_files)
         total_pages = math.ceil(total_count / page_size) if total_count > 0 else 0
@@ -401,12 +485,12 @@ class ServerManager:
         """Get detailed metadata about a specific audio file."""
         # Validate filename format and prevent directory traversal
         if not filename.endswith('.wav') or '/' in filename or '\\' in filename or '..' in filename:
-            raise ValueError("Invalid filename")
+            raise ValidationError("Invalid filename")
         
         filepath = os.path.join(AUDIO_LOGS_DIR, filename)
         
         if not await asyncio.to_thread(os.path.exists, filepath):
-            raise ValueError("Audio file not found")
+            raise NotFoundError("Audio file not found")
         
         return await get_audio_file_info(filepath)
 
@@ -417,22 +501,22 @@ class ServerManager:
         """
         # Validate filename format and prevent directory traversal
         if not filename.endswith('.wav') or '/' in filename or '\\' in filename or '..' in filename:
-            raise ValueError("Invalid filename")
+            raise ValidationError("Invalid filename")
         
         # Parse filename to get UID
         parsed = parse_audio_filename(filename)
         if not parsed:
-            raise ValueError("Invalid audio filename format")
+            raise ValidationError("Invalid audio filename format")
         
         # Check if server is running for this UID
         uid = parsed['uid']
         if self.is_server_running(uid):
-            raise ValueError(f"Cannot delete audio file: Server for UID {uid} is currently running")
+            raise ResourceConflictError(f"Cannot delete audio file: Server for UID {uid} is currently running")
         
         filepath = os.path.join(AUDIO_LOGS_DIR, filename)
         
         if not await asyncio.to_thread(os.path.exists, filepath):
-            raise ValueError("Audio file not found")
+            raise NotFoundError("Audio file not found")
         
         await asyncio.to_thread(os.remove, filepath)
 
@@ -440,11 +524,11 @@ class ServerManager:
         """Get the full path to an audio file after validation."""
         # Validate filename format and prevent directory traversal
         if not filename.endswith('.wav') or '/' in filename or '\\' in filename or '..' in filename:
-            raise ValueError("Invalid filename")
+            raise ValidationError("Invalid filename")
         
         # Verify it's actually an audio file we recognize
         parsed = parse_audio_filename(filename)
         if not parsed:
-            raise ValueError("Invalid audio filename format")
+            raise ValidationError("Invalid audio filename format")
         
         return os.path.join(AUDIO_LOGS_DIR, filename)

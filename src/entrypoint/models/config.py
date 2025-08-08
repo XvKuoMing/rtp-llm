@@ -8,7 +8,6 @@ class HostServerConfig(BaseModel):
     port: int
     start_port: int
     end_port: int
-    debug: bool
 
 
 class RedisConfig(BaseModel):
