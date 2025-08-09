@@ -9,7 +9,7 @@ import logging
 from datetime import datetime
 
 from rtp_llm.providers import MetaProvider
-from rtp_llm.buffer import BaseAudioBuffer
+from rtp_llm.buffer import ArrayBuffer
 from rtp_llm.flow import CopyFlowManager
 from rtp_llm.history import ChatHistoryLimiter
 from rtp_llm import VoiceAgent, Server
@@ -188,7 +188,7 @@ class ServerManager:
         return VoiceAgent(
             stt_provider=self.stt_providers[0],
             tts_provider=self.tts_providers[0],
-            history_limiter=ChatHistoryLimiter(
+            history_manager=ChatHistoryLimiter(
                 limit=chat_limit,
             ),
             backup_stt_providers=self.stt_providers[1:] if len(self.stt_providers) > 1 else None,
@@ -268,7 +268,7 @@ class ServerManager:
         
         server = Server(
             adapter=adapter,
-            audio_buffer=BaseAudioBuffer(),
+            audio_buffer=ArrayBuffer(),
             flow_manager=CopyFlowManager(),
             vad=vad,
             agent=agent,
