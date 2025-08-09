@@ -186,8 +186,8 @@ class ServerManager:
             return None
         
         return VoiceAgent(
-            stt_providers=self.stt_providers[0],
-            tts_providers=self.tts_providers[0],
+            stt_provider=self.stt_providers[0],
+            tts_provider=self.tts_providers[0],
             history_limiter=ChatHistoryLimiter(
                 limit=chat_limit,
             ),
