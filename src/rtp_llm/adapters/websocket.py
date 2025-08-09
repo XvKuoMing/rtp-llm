@@ -64,7 +64,10 @@ class WebSocketAdapter(Adapter):
             
         logger.info(f"Starting WebSocket server on {self.host}:{self.port}")
         
-        async def client_handler(websocket: WebSocketServerProtocol, path: str):
+        # websockets>=12 passes a single argument (connection/websocket) to the handler.
+        # Older versions passed (websocket, path). We accept a single argument for
+        # compatibility with newer versions; the path is not used by this adapter.
+        async def client_handler(websocket):
             """Handle individual client connections"""
             client_address = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
             logger.info(f"New WebSocket client connected from {client_address}")
