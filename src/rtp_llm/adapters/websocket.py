@@ -127,10 +127,10 @@ class WebSocketAdapter(Adapter):
             return
             
         try:
-            # Send raw audio bytes directly (binary message)
+            # Stream the payload in ~20ms frames to better match real-time playback
             await self.connected_client.send(audio_pcm16)
-                
-            logger.debug(f"Sent {len(audio_pcm16)} bytes of audio to WebSocket client")
+            await asyncio.sleep(len(audio_pcm16) / (2 * self.sample_rate))
+            logger.debug(f"Sent {len(audio_pcm16)} bytes of audio to WebSocket client (stream-paced)")
             
         except ConnectionClosed:
             logger.info("Client disconnected during audio send")

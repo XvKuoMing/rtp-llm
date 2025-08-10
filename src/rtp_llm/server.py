@@ -22,6 +22,9 @@ logger = logging.getLogger(__name__)
 
 VAD_INTERVAL = 0.5 # 500ms, 1.0 - sec
 
+
+#TODO: implement freeze feature + voice activations
+
 class Server:
 
     def __init__(self,
