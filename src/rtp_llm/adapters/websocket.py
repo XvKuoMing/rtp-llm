@@ -52,9 +52,7 @@ class WebSocketAdapter(Adapter):
         """
         Check if a WebSocket client is connected and ready
         """
-        return (self.connected_client is not None and 
-                not self.connected_client.closed and 
-                self.is_running)
+        return self.connected_client is not None and self.is_running
 
     async def __start_server(self):
         """Start the WebSocket server and wait for client connections"""
