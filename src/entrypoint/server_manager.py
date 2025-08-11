@@ -87,30 +87,46 @@ class ServerManager:
                 # Try to locate repo example: ../../examples/providers.json relative to this file
                 try_example = (Path(__file__).resolve().parents[2] / "examples" / "providers.json")
                 if try_example.exists():
-                    # Ensure target directory
-                    target_path.parent.mkdir(parents=True, exist_ok=True)
-                    # Copy contents
-                    with try_example.open("r", encoding="utf-8") as src, target_path.open("w", encoding="utf-8") as dst:
-                        data = src.read()
-                        dst.write(data)
-                        try:
-                            self.__providers_config = json.loads(data)
-                        except Exception:
-                            self.__providers_config = None
+                    # Read from example first, then best-effort persist
+                    data = try_example.read_text(encoding="utf-8")
+                    try:
+                        self.__providers_config = json.loads(data)
+                    except Exception:
+                        self.__providers_config = None
+                    # Best-effort write to target; skip on read-only FS
+                    try:
+                        target_path.parent.mkdir(parents=True, exist_ok=True)
+                        with target_path.open("w", encoding="utf-8") as dst:
+                            json.dump(data, dst, ensure_ascii=False, indent=2)
+                    except Exception as e:
+                        logger.warning(
+                            "Could not persist providers config to %s (continuing in-memory only): %s",
+                            str(target_path),
+                            repr(e),
+                        )
                 else:
                     # No config available
                     self.__providers_config = None
         else:
             # Config provided: persist and use
             self.__providers_config = config
-            target_path.parent.mkdir(parents=True, exist_ok=True)
-            with target_path.open("w", encoding="utf-8") as f:
-                json.dump(self.__providers_config, f)
-            logger.debug(
-                "Updated providers config at %s:\n%s",
-                str(target_path),
-                to_json_for_logging(sanitize_for_logging(self.__providers_config), indent=2),
-            )
+            # Best-effort persist to disk; skip on failure (e.g., read-only FS)
+            try:
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+                with target_path.open("w", encoding="utf-8") as f:
+                    json.dump(self.__providers_config, f, ensure_ascii=False, indent=2)
+                logger.debug(
+                    "Updated providers config at %s:\n%s",
+                    str(target_path),
+                    to_json_for_logging(sanitize_for_logging(self.__providers_config), indent=2),
+                )
+            except Exception as e:
+                logger.warning(
+                    "Could not write providers config to %s (continuing in-memory only): %s. Config: %s",
+                    str(target_path),
+                    repr(e),
+                    to_json_for_logging(sanitize_for_logging(self.__providers_config), indent=2),
+                )
         
         if self.__providers_config and "stt_providers" in self.__providers_config:
             stt_instances = []
@@ -208,7 +224,6 @@ class ServerManager:
 
         if server_config.adapter.adapter_type == "rtp":
             adapter = RTPAdapter(
-                uid=server_config.uid,
                 sample_rate=server_config.sample_rate,
                 target_codec=server_config.adapter.target_codec,
                 host_ip=host_ip,
@@ -218,7 +233,6 @@ class ServerManager:
             )
         elif server_config.adapter.adapter_type == "websocket":
             adapter = WebSocketAdapter(
-                uid=server_config.uid,
                 sample_rate=server_config.sample_rate,
                 target_codec=server_config.adapter.target_codec,
                 host=host_ip,
@@ -308,6 +322,7 @@ class ServerManager:
         
         server = self.__servers[run_params.uid]
         self.__running_servers[run_params.uid] = asyncio.create_task(server.run(
+            uid=run_params.uid,
             first_message=run_params.first_message,
             allow_interruptions=run_params.allow_interruptions,
             system_prompt=run_params.system_prompt,

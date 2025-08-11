@@ -24,7 +24,7 @@ class WebSocketAdapter(Adapter):
                  port: int = 8765,
                  sample_rate: int = 8000,
                  target_codec: str = "pcm",
-                 **kwargs):
+                 ):
         super().__init__(sample_rate=sample_rate, target_codec=target_codec)
         self.host = host
         self.port = port
@@ -127,7 +127,6 @@ class WebSocketAdapter(Adapter):
             return
             
         try:
-            # Stream the payload in ~20ms frames to better match real-time playback
             await self.connected_client.send(audio_pcm16)
             await asyncio.sleep(len(audio_pcm16) / (2 * self.sample_rate))
             logger.debug(f"Sent {len(audio_pcm16)} bytes of audio to WebSocket client (stream-paced)")
