@@ -2,10 +2,11 @@ from fastapi import APIRouter, Depends
 from typing import Union, Dict, Any
 
 from ..models import (
-    ServerConfig, 
-    RunParams, 
-    Response, 
-    StartServerResponse
+    ServerConfig,
+    RunParams,
+    Response,
+    StartServerResponse,
+    StopServerRequest,
 )
 from ..server_manager import ServerManager
 from .dependencies import get_server_manager
@@ -42,7 +43,7 @@ async def update_agent(
 
 
 @router.post("/stop", response_model=Response, summary="Stop a server instance")
-async def stop_server(uid: Union[str, int], manager: ServerManager = Depends(get_server_manager)):
+async def stop_server(request: StopServerRequest, manager: ServerManager = Depends(get_server_manager)):
     """Stop a server instance"""
-    manager.stop_server(uid)
+    manager.stop_server(request.uid)
     return Response(success=True)
