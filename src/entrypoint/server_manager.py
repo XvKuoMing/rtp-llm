@@ -288,7 +288,7 @@ class ServerManager:
             agent=agent,
             max_wait_time=server_config.max_wait_time,
             audio_cache=RedisAudioCache(
-                redis=self.redis,
+                redis_client=self.redis,
                 ttl_seconds=self.reusable_components.redis.ttl_seconds,
             ) if self.redis else None,
         )
