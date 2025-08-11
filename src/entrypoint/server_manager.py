@@ -16,6 +16,7 @@ from rtp_llm import VoiceAgent, Server
 from rtp_llm.vad import WebRTCVAD, SileroVAD
 from rtp_llm.adapters import RTPAdapter, WebSocketAdapter
 from rtp_llm.cache.rredis import RedisAudioCache
+from rtp_llm.callbacks import RestCallback
 from rtp_llm.audio_logger import AUDIO_LOGS_DIR
 
 from .utils.port_manager import PortManager
@@ -320,6 +321,17 @@ class ServerManager:
         if self.is_server_running(run_params.uid):
             raise ResourceConflictError(f"Server with uid {run_params.uid} is already running")
         
+        # Create RestCallback if provided
+        callback = None
+        if run_params.rest_callback:
+            callback = RestCallback(
+                base_url=run_params.rest_callback.base_url,
+                on_response_endpoint=run_params.rest_callback.on_response_endpoint,
+                on_start_endpoint=run_params.rest_callback.on_start_endpoint,
+                on_error_endpoint=run_params.rest_callback.on_error_endpoint,
+                on_finish_endpoint=run_params.rest_callback.on_finish_endpoint,
+            )
+        
         server = self.__servers[run_params.uid]
         self.__running_servers[run_params.uid] = asyncio.create_task(server.run(
             uid=run_params.uid,
@@ -329,6 +341,7 @@ class ServerManager:
             tts_gen_config=run_params.tts_gen_config,
             stt_gen_config=run_params.stt_gen_config,
             volume=run_params.tts_volume,
+            callback=callback,
         ))
         
     def update_agent(self, uid: Union[str, int], system_prompt: str, tts_gen_config: Dict[str, Any], stt_gen_config: Dict[str, Any]):

@@ -4,6 +4,15 @@ from typing import Union, Literal, Dict, Any, Optional
 from .config import UniAdapterConfig, UniVadConfig
 
 
+class RestCallbackConfig(BaseModel):
+    """Configuration for REST callback endpoints"""
+    base_url: str
+    on_response_endpoint: Optional[str] = None
+    on_start_endpoint: Optional[str] = None
+    on_error_endpoint: Optional[str] = None
+    on_finish_endpoint: Optional[str] = None
+
+
 class ServerConfig(BaseModel):
     uid: Union[str, int]
     sample_rate: Literal[8000, 16000, 24000, 48000]
@@ -21,6 +30,7 @@ class RunParams(BaseModel):
     tts_gen_config: Optional[Dict[str, Any]] = Field(default_factory=dict)
     stt_gen_config: Optional[Dict[str, Any]] = Field(default_factory=dict)
     tts_volume: float = 1.0
+    rest_callback: Optional[RestCallbackConfig] = None
 
 
 class StopServerRequest(BaseModel):
