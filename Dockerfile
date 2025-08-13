@@ -37,9 +37,8 @@ EXPOSE 8080/tcp
 EXPOSE 10000-10010/tcp
 EXPOSE 10000-10010/udp
 
-# Run rtllm as the entrypoint so docker-compose `command:` can pass only the args
+# Run rtllm as the entrypoint; rely on environment variables for defaults
 ENTRYPOINT ["rtllm"]
-# Provide sensible defaults; can be overridden by docker run/compose `command:`
-CMD ["--host", "0.0.0.0", "--port", "8000"]
+# CMD ["--host", "0.0.0.0", "--port", "8080", "--start-port", "10000", "--end-port", "10010"]
 
 
