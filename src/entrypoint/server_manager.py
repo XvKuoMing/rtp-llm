@@ -346,7 +346,11 @@ class ServerManager:
             callback=callback,
         ))
         
-    def update_agent(self, uid: Union[str, int], system_prompt: str, tts_gen_config: Dict[str, Any], stt_gen_config: Dict[str, Any]):
+    def update_agent(self, 
+                     uid: Union[str, int], 
+                     system_prompt: Optional[str] = None, 
+                     tts_gen_config: Optional[Dict[str, Any]] = None, 
+                     stt_gen_config: Optional[Dict[str, Any]] = None):
         if uid not in self.__servers:
             raise NotFoundError(f"Server with uid {uid} not found")
         

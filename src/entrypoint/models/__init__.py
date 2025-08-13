@@ -6,7 +6,7 @@ from .config import (
     UniAdapterConfig,
     UniVadConfig
 )
-from .server import ServerConfig, RunParams, StopServerRequest, RestCallbackConfig
+from .server import ServerConfig, RunParams, StopServerRequest, RestCallbackConfig, UpdateAgentRequest
 from .responses import Response, StartServerResponse
 
 __all__ = [
@@ -24,6 +24,7 @@ __all__ = [
     "RunParams",
     "StopServerRequest",
     "RestCallbackConfig",
+    "UpdateAgentRequest",
     # Response models
     "Response",
     "StartServerResponse"

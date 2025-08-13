@@ -7,6 +7,7 @@ from ..models import (
     Response,
     StartServerResponse,
     StopServerRequest,
+    UpdateAgentRequest,
 )
 from ..server_manager import ServerManager
 from .dependencies import get_server_manager
@@ -31,14 +32,16 @@ async def run_server(run_params: RunParams, manager: ServerManager = Depends(get
 
 @router.post("/update_agent", response_model=Response, summary="Update agent configuration")
 async def update_agent(
-    uid: Union[str, int], 
-    system_prompt: str, 
-    tts_gen_config: Dict[str, Any], 
-    stt_gen_config: Dict[str, Any],
+    request: UpdateAgentRequest,
     manager: ServerManager = Depends(get_server_manager),
 ):
     """Update agent configuration for a specific server"""
-    manager.update_agent(uid, system_prompt, tts_gen_config, stt_gen_config)
+    manager.update_agent(
+        uid=request.uid,
+        system_prompt=request.system_prompt,
+        tts_gen_config=request.tts_gen_config,
+        stt_gen_config=request.stt_gen_config,
+    )
     return Response(success=True)
 
 

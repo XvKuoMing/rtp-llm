@@ -35,3 +35,10 @@ class RunParams(BaseModel):
 
 class StopServerRequest(BaseModel):
     uid: Union[str, int]
+
+
+class UpdateAgentRequest(BaseModel):
+    uid: Union[str, int]
+    system_prompt: Optional[str] = None
+    tts_gen_config: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    stt_gen_config: Optional[Dict[str, Any]] = Field(default_factory=dict)
