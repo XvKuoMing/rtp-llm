@@ -331,6 +331,7 @@ class ServerManager:
                 on_error_endpoint=run_params.rest_callback.on_error_endpoint,
                 on_finish_endpoint=run_params.rest_callback.on_finish_endpoint,
             )
+            logger.info(f"Creating rest callback with params: {str(callback)}")
         
         server = self.__servers[run_params.uid]
         self.__running_servers[run_params.uid] = asyncio.create_task(server.run(
