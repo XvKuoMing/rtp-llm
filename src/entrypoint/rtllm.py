@@ -138,9 +138,6 @@ def main():
     # Configure logging early
     logging.basicConfig(level=getattr(logging, args.log_level.upper(), logging.INFO),
                         format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
-    if args.debug:
-        logging.getLogger().setLevel(logging.DEBUG)
-    logger.info("Starting rtllm server (log_level=%s, debug=%s)", args.log_level, args.debug)
 
     # Load settings from env with CLI overrides
     # Only pass non-None values to allow defaults to take effect
@@ -169,6 +166,10 @@ def main():
         settings_kwargs["max_concurrent_files"] = args.max_concurrent_files
 
     settings = AppSettings(**settings_kwargs)
+    # Ensure debug from env/CLI takes effect on logging
+    if settings.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+    logger.info("Starting rtllm server (log_level=%s, debug=%s)", args.log_level, settings.debug)
     # Log effective application settings (sanitized)
     logger.info("App settings: %s", to_json_for_logging(sanitize_for_logging(settings.model_dump())))
 
