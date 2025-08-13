@@ -104,7 +104,7 @@ def main():
     parser.add_argument("--port", type=int)
     parser.add_argument("--start-port", type=int)
     parser.add_argument("--end-port", type=int)
-    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    parser.add_argument("--debug", type=lambda x: x.lower() in ('true', '1', 'yes', 'on', 'false', '0', 'no', 'off'), default=None, help="Enable debug logging (true/false)")
     
     # reusable components
     parser.add_argument("--providers-config-path", help="Providers config path")
@@ -147,6 +147,7 @@ def main():
             'port': args.port,
             'start_port': args.start_port,
             'end_port': args.end_port,
+            'debug': args.debug,
             'providers_config_path': args.providers_config_path,
             'redis_enabled': args.redis_enabled,
             'redis_host': args.redis_host,
@@ -157,9 +158,6 @@ def main():
         }.items() if v is not None
     }
     
-    # Always include boolean flags that have explicit values
-    if args.debug:
-        settings_kwargs['debug'] = args.debug
     
     # Optional overrides
     if args.max_concurrent_files is not None:

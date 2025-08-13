@@ -316,6 +316,7 @@ class ServerManager:
             self.port_manager.release_uid(uid)
 
     def run_server(self, run_params: RunParams):
+        logger.info(f"Running server with params: {str(run_params)}")
         if run_params.uid not in self.__servers:
             raise NotFoundError(f"Server with uid {run_params.uid} not found")
         if self.is_server_running(run_params.uid):

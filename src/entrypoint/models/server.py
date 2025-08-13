@@ -30,7 +30,7 @@ class RunParams(BaseModel):
     tts_gen_config: Optional[Dict[str, Any]] = Field(default_factory=dict)
     stt_gen_config: Optional[Dict[str, Any]] = Field(default_factory=dict)
     tts_volume: float = 1.0
-    rest_callback: Optional[RestCallbackConfig] = None
+    callback: Optional[RestCallbackConfig] = None
 
 
 class StopServerRequest(BaseModel):
