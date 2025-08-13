@@ -324,13 +324,13 @@ class ServerManager:
         
         # Create RestCallback if provided
         callback = None
-        if run_params.rest_callback:
+        if run_params.callback:
             callback = RestCallback(
-                base_url=run_params.rest_callback.base_url,
-                on_response_endpoint=run_params.rest_callback.on_response_endpoint,
-                on_start_endpoint=run_params.rest_callback.on_start_endpoint,
-                on_error_endpoint=run_params.rest_callback.on_error_endpoint,
-                on_finish_endpoint=run_params.rest_callback.on_finish_endpoint,
+                base_url=run_params.callback.base_url,
+                on_response_endpoint=run_params.callback.on_response_endpoint,
+                on_start_endpoint=run_params.callback.on_start_endpoint,
+                on_error_endpoint=run_params.callback.on_error_endpoint,
+                on_finish_endpoint=run_params.callback.on_finish_endpoint,
             )
             logger.info(f"Creating rest callback with params: {str(callback)}")
         

@@ -104,7 +104,7 @@ def main():
     parser.add_argument("--port", type=int)
     parser.add_argument("--start-port", type=int)
     parser.add_argument("--end-port", type=int)
-    parser.add_argument("--debug", type=lambda x: x.lower() in ('true', '1', 'yes', 'on', 'false', '0', 'no', 'off'), default=None, help="Enable debug logging (true/false)")
+    parser.add_argument("--debug", type=lambda x: x.lower() in ('true', '1', 'yes', 'on'), default=None, help="Enable debug logging (true/false)")
     
     # reusable components
     parser.add_argument("--providers-config-path", help="Providers config path")
