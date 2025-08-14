@@ -137,7 +137,6 @@ class Server:
                     is_speaking = self.speaking is not None and not self.speaking.done()
 
                     await self.audio_buffer.add_frame(audio)
-                    await self.audio_logger.log_user(audio)
 
                     buffer_audio = await self.audio_buffer.get_frames()
                     if len(buffer_audio) < self.processed_bytes + self.vad_interval_bytes: # ensure to not check the same interval multiple times
@@ -155,7 +154,7 @@ class Server:
                                         and self.max_wait_time > 0 \
                                         and (time.time() - self.last_response_time) > self.max_wait_time
                     need_run_agent = await self.flow_manager.run_agent(vad_state)
-
+                    
                     if max_time_reached or need_run_agent:
                         if need_run_agent:
                             await self.audio_logger.beep() # NOTE: this is a hack for audio logging to make the user aware that the agent started answering
@@ -164,12 +163,14 @@ class Server:
                             self.speaking.cancel()
                         logger.info(f"Answering to the user; max_time_reached: {max_time_reached}, need_run_agent: {need_run_agent}")
                         buffer_audio = await self.audio_buffer.get_frames() # update the buffer to include last arrived frames
+                        await self.audio_logger.log_user(audio)
                         self.speaking = asyncio.create_task(self.answer(buffer_audio))
                         self.flow_manager.reset()
                         self.audio_buffer.clear()
                         self.processed_bytes = 0
                     else:
                         pass # later, we will implement silence sending
+                    
             except Exception as e:
                 logger.error(f"Error in server loop: {e}")
                 asyncio.create_task(self.callback.on_error(self.uid, e)) # fire and forget

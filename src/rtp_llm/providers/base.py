@@ -7,10 +7,10 @@ import inspect
 class Message:
     role: str
     content: Union[str, bytes]
-    data_type: str = "text" # audio, video, image.
+    data_type: str = "text" # audio
 
     def __post_init__(self):
-        if self.data_type not in ["text", "audio", "video", "image"]:
+        if self.data_type not in ["text", "audio"]:
             raise ValueError(f"Invalid data type: {self.data_type}")
 
 
