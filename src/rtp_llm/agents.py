@@ -1,11 +1,17 @@
 from .providers import Message, BaseSTTProvider, BaseTTSProvider
 from .history import BaseChatHistory
 from typing import List, AsyncGenerator, Optional, Any, Dict, Union, Literal, Callable
+from pydantic import BaseModel, Field
 import logging
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+
+class AgentConfig(BaseModel):
+    system_prompt: Optional[str] = None
+    stt_config: Dict[str, Any] = Field(default_factory=dict)
+    tts_config: Dict[str, Any] = Field(default_factory=dict)
 
 class VoiceAgent:
 
@@ -14,7 +20,8 @@ class VoiceAgent:
                  tts_provider: BaseTTSProvider,
                  history_manager: BaseChatHistory,
                  backup_stt_providers: Optional[List[BaseSTTProvider]] = None,
-                 backup_tts_providers: Optional[List[BaseTTSProvider]] = None):
+                 backup_tts_providers: Optional[List[BaseTTSProvider]] = None,
+                 config: Optional[AgentConfig] = None):
         """
         VoiceAgent is a class that represents a voice agent.
         It is responsible for handling the voice input and output, and for managing the chat history.
@@ -33,6 +40,17 @@ class VoiceAgent:
         self.__history_manager = history_manager
         self.backup_stt_providers = backup_stt_providers or []
         self.backup_tts_providers = backup_tts_providers or []
+
+        # Per-agent configuration (do NOT mutate shared providers)
+        if config is not None:
+            self.config = config
+        else:
+            # Initialize from providers' current state
+            self.config = AgentConfig(
+                system_prompt=self.__stt_provider.system_prompt,
+                stt_config=self.__stt_provider.stt_gen_config,
+                tts_config=self.__tts_provider.tts_gen_config
+            )
 
     @property
     def stt_provider(self) -> BaseSTTProvider:
@@ -53,6 +71,15 @@ class VoiceAgent:
     @property
     def history_manager(self) -> BaseChatHistory:
         return self.__history_manager
+
+
+    @property
+    def tts_footprint(self) -> str:
+        """
+        Returns a footprint string that incorporates the provider's own footprint
+        and the per-agent TTS config, to ensure audio cache keys reflect overrides.
+        """
+        return self.tts_provider.tts_footprint
     
 
     def __valide_config(self, config: Dict[str, Any], provider_type: Literal["stt", "tts"]):
@@ -64,17 +91,20 @@ class VoiceAgent:
         validated_config = {key: value for key, value in config.items() if key in provider_config_info}
         return validated_config
     
-    def update_stt_config(self, config: Dict[str, Any]):
+    def update(self,
+               system_prompt: Optional[str] = None,
+               stt_config: Optional[Dict[str, Any]] = None,
+               tts_config: Optional[Dict[str, Any]] = None,
+               ):
         """
-        Update the stt_provider config.
+        Update the agent config.
         """
-        self.stt_provider.stt_gen_config = self.__valide_config(config, "stt")
-    
-    def update_tts_config(self, config: Dict[str, Any]):
-        """
-        Update the tts_provider config.
-        """
-        self.tts_provider.tts_gen_config = self.__valide_config(config, "tts")
+        if system_prompt is not None:
+            self.config.system_prompt = system_prompt
+        if stt_config:
+            self.config.stt_config = self.__valide_config(stt_config, "stt")
+        if tts_config:
+            self.config.tts_config = self.__valide_config(tts_config, "tts")
     
 
     async def add_message(self, message: Message, is_user: bool, is_audio: bool = False):
@@ -144,9 +174,17 @@ class VoiceAgent:
             if enable_history:
                 return self._stt_stream_with_history(messages)
             else:
-                return self.stt_provider.stt_stream(messages)
+                return self.stt_provider.stt_stream(
+                    messages,
+                    system_prompt=self.config.system_prompt,
+                    gen_config=self.__valide_config(self.config.stt_config, "stt"),
+                )
         else:
-            content = await self.stt_provider.stt(messages)
+            content = await self.stt_provider.stt(
+                messages,
+                system_prompt=self.config.system_prompt,
+                gen_config=self.__valide_config(self.config.stt_config, "stt"),
+            )
             if enable_history:
                 await self.history_manager.add_message(Message(role="assistant", content=content, data_type="text"))
             return content
@@ -157,7 +195,11 @@ class VoiceAgent:
         This yields chunks immediately (low latency) while building complete response.
         """
         accumulated_text = ""
-        async for chunk in self.stt_provider.stt_stream(messages):
+        async for chunk in self.stt_provider.stt_stream(
+            messages,
+            system_prompt=self.config.system_prompt,
+            gen_config=self.__valide_config(self.config.stt_config, "stt"),
+        ):
             accumulated_text += chunk
             yield chunk
         
@@ -174,9 +216,15 @@ class VoiceAgent:
         If the primary provider fails, the agent will switch to the first available backup provider.
         """
         if stream:
-            return self.tts_provider.tts_stream(text=text)
+            return self.tts_provider.tts_stream(
+                text=text,
+                gen_config=self.__valide_config(self.config.tts_config, "tts"),
+            )
         else:
-            return await self.tts_provider.tts(text=text)
+            return await self.tts_provider.tts(
+                text=text,
+                gen_config=self.__valide_config(self.config.tts_config, "tts"),
+            )
     
     
     async def _fire_with_backup(self,

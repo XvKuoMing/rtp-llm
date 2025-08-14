@@ -122,13 +122,17 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
             raise ValueError(f"Invalid data type: {message.data_type}")
 
     async def stt(self, 
-                  formatted_data: List[Union[AudioOpenAIMessage, TextOpenAIMessage]]) -> str:
+                  formatted_data: List[Union[AudioOpenAIMessage, TextOpenAIMessage]],
+                  *,
+                  system_prompt: Optional[str] = None,
+                  gen_config: Optional[Dict[str, Any]] = None,
+                  ) -> str:
         if not self.stt_client:
             raise ValueError("STT client is not set")
         response = await self.stt_client.chat.completions.create(
             model=self.stt_model,
-            messages=[self.formatted_system_prompt] + [message.as_json() for message in formatted_data],
-            **self.stt_gen_config
+            messages=[{"role": "system", "content": system_prompt or self.system_prompt}] + [message.as_json() for message in formatted_data],
+            **(gen_config if gen_config is not None else (self.stt_gen_config or {}))
         )
         if isinstance(response, ChatCompletion):
             return response.choices[0].message.content
@@ -136,14 +140,18 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
             raise ValueError(f"Unsupported response type: {type(response)}")
 
     async def stt_stream(self, 
-                         formatted_data: List[Union[AudioOpenAIMessage, TextOpenAIMessage]]) -> AsyncGenerator[str, None]:
+                         formatted_data: List[Union[AudioOpenAIMessage, TextOpenAIMessage]],
+                         *,
+                         system_prompt: Optional[str] = None,
+                         gen_config: Optional[Dict[str, Any]] = None,
+                         ) -> AsyncGenerator[str, None]:
         if not self.stt_client:
             raise ValueError("STT client is not set")
         response = await self.stt_client.chat.completions.create(
             model=self.stt_model,
-            messages=[self.formatted_system_prompt] + [message.as_json() for message in formatted_data],
+            messages=[{"role": "system", "content": system_prompt or self.system_prompt}] + [message.as_json() for message in formatted_data],
             stream=True,
-            **self.stt_gen_config
+            **(gen_config if gen_config is not None else (self.stt_gen_config or {}))
         )
         async for chunk in response:
             if isinstance(chunk, ChatCompletionChunk):
@@ -151,7 +159,7 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
             else:
                 raise ValueError(f"Unsupported response type: {type(chunk)}")
     
-    async def tts(self, text: str) -> bytes:
+    async def tts(self, text: str, *, gen_config: Optional[Dict[str, Any]] = None) -> bytes:
         if not self.tts_client:
             raise ValueError("TTS client is not set")
         response = await self.tts_client.audio.speech.create(
@@ -159,13 +167,13 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
             input=text,
             response_format=self.pcm_response_format,
             voice=self.tts_voice,
-            **self.tts_gen_config
+            **(gen_config if gen_config is not None else (self.tts_gen_config or {}))
         )
         # if not isinstance(response, HttpxBinaryResponseContent):
             # raise ValueError(f"Unsupported response type: {type(response)}")
         return response.content
 
-    async def tts_stream(self, text: str) -> AsyncGenerator[bytes, None]:
+    async def tts_stream(self, text: str, *, gen_config: Optional[Dict[str, Any]] = None) -> AsyncGenerator[bytes, None]:
         if not self.tts_client:
             raise ValueError("TTS client is not set")
         async with self.tts_client.audio.speech.with_streaming_response.create(
@@ -173,7 +181,7 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
             input=text,
             response_format=self.pcm_response_format,
             voice=self.tts_voice,
-            **self.tts_gen_config
+            **(gen_config if gen_config is not None else (self.tts_gen_config or {}))
         ) as response:
             # if not isinstance(response, AsyncResponseContextManager[AsyncStreamedBinaryAPIResponse]):
             #     raise ValueError(f"Unsupported response type: {type(response)}")
@@ -228,13 +236,17 @@ class AstLLmProvider(OpenAIProvider):
     
 
     async def stt(self, 
-                  formatted_data: List[TextOpenAIMessage]) -> str:
+                  formatted_data: List[TextOpenAIMessage],
+                  *,
+                  system_prompt: Optional[str] = None,
+                  gen_config: Optional[Dict[str, Any]] = None,
+                  ) -> str:
         if not self.stt_model:
             raise ValueError("LLM model is not set")
         response = await self.stt_client.chat.completions.create(
             model=self.stt_model,
-            messages=[self.system_prompt] + [message.as_json() for message in formatted_data],
-            **self.stt_gen_config
+            messages=[{"role": "system", "content": system_prompt or self.system_prompt}] + [message.as_json() for message in formatted_data],
+            **(gen_config if gen_config is not None else (self.stt_gen_config or {}))
         )
         if isinstance(response, ChatCompletion):
             return response.choices[0].message.content
@@ -242,14 +254,18 @@ class AstLLmProvider(OpenAIProvider):
             raise ValueError(f"Unsupported response type: {type(response)}")
     
     async def stt_stream(self, 
-                         formatted_data: List[TextOpenAIMessage]) -> AsyncGenerator[str, None]:
+                         formatted_data: List[TextOpenAIMessage],
+                         *,
+                         system_prompt: Optional[str] = None,
+                         gen_config: Optional[Dict[str, Any]] = None,
+                         ) -> AsyncGenerator[str, None]:
         if not self.stt_model:
             raise ValueError("LLM model is not set")
         response = await self.stt_client.chat.completions.create(
             model=self.stt_model,
-            messages=[self.system_prompt] + [message.as_json() for message in formatted_data],
+            messages=[{"role": "system", "content": system_prompt or self.system_prompt}] + [message.as_json() for message in formatted_data],
             stream=True,
-            **self.stt_gen_config
+            **(gen_config if gen_config is not None else (self.stt_gen_config or {}))
         )
         async for chunk in response:
             if isinstance(chunk, ChatCompletionChunk):

@@ -77,21 +77,6 @@ class Server:
         # internal
         self.__last_ai_pcm16_chunks = []
     
-    def update_agent_config(
-            self,
-            system_prompt: Optional[str] = None,
-            tts_gen_config: Optional[Dict[str, Any]] = None,
-            stt_gen_config: Optional[Dict[str, Any]] = None,
-    ):
-        if system_prompt:
-            self.agent.stt_provider.system_prompt = system_prompt
-                
-        if tts_gen_config:
-            self.agent.update_tts_config(tts_gen_config)
-        if stt_gen_config:
-            self.agent.update_stt_config(stt_gen_config)
-
-
     async def run(self, 
                   first_message: Optional[str] = None, 
                   uid: Optional[int | str] = None, 
@@ -109,10 +94,10 @@ class Server:
         # Store volume setting
         self.volume = volume
 
-        self.update_agent_config(
+        self.agent.update(
             system_prompt=system_prompt,
-            tts_gen_config=tts_gen_config,
-            stt_gen_config=stt_gen_config,
+            tts_config=tts_gen_config,
+            stt_config=stt_gen_config,
         )
 
         self.uid = uid or str(uuid.uuid4())
@@ -221,7 +206,7 @@ class Server:
         """
         speak the text
         """
-        key = self.audio_cache.make_key(text, self.agent.tts_provider.tts_footprint)
+        key = self.audio_cache.make_key(text, self.agent.tts_footprint)
         cached_chunks = await self.audio_cache.get(key)
         
         try:
@@ -297,6 +282,17 @@ class Server:
             asyncio.create_task(self.callback.on_finish(self.uid)) # fire and forget
             self.uid = None
             self.callback = None
+
+    def update_agent_config(self,
+                            *,
+                            system_prompt: Optional[str] = None,
+                            tts_gen_config: Optional[Dict[str, Any]] = None,
+                            stt_gen_config: Optional[Dict[str, Any]] = None) -> None:
+        self.agent.update(
+            system_prompt=system_prompt,
+            tts_config=tts_gen_config,
+            stt_config=stt_gen_config,
+        )
 
 
 

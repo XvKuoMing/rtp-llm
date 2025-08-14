@@ -355,7 +355,7 @@ class ServerManager:
             raise NotFoundError(f"Server with uid {uid} not found")
         
         server = self.__servers[uid]
-        server.update_agent_config(
+        server.agent.update(
             system_prompt=system_prompt,
             tts_gen_config=tts_gen_config,
             stt_gen_config=stt_gen_config,

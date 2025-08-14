@@ -130,6 +130,7 @@ class BaseTTSProvider(ABC, metaclass=MetaProvider):
     def tts_footprint(self) -> str:
         """
         A string that uniquely identifies the tts_provider.
+        IMPORTANT: do not include the gen_config in the footprint, since it is per generation config
         """
         return f"{self.response_sample_rate}_{str(self.tts_gen_config)}"
 
@@ -143,7 +144,9 @@ class BaseTTSProvider(ABC, metaclass=MetaProvider):
 
     @abstractmethod
     async def tts(self, 
-                  text: str
+                  text: str,
+                  *,
+                  gen_config: Optional[Dict[str, Any]] = None,
                   ) -> bytes:
         """
         Generate audio from text.
@@ -152,7 +155,9 @@ class BaseTTSProvider(ABC, metaclass=MetaProvider):
 
 
     async def tts_stream(self, 
-                         text: str
+                         text: str,
+                         *,
+                         gen_config: Optional[Dict[str, Any]] = None,
                          ) -> AsyncGenerator[bytes, None]:
         """
         Generate audio from text with streaming.
@@ -186,7 +191,10 @@ class BaseSTTProvider(ABC, metaclass=MetaProvider):
 
     @abstractmethod
     async def stt(self, 
-                  formatted_wav_audio: Any
+                  formatted_wav_audio: Any,
+                  *,
+                  system_prompt: Optional[str] = None,
+                  gen_config: Optional[Dict[str, Any]] = None,
                   ) -> str:
         """
         Generate text from audio message: a message with audio formatted to the provider's format.
@@ -196,6 +204,9 @@ class BaseSTTProvider(ABC, metaclass=MetaProvider):
 
     async def stt_stream(self,
                          formatted_wav_audio: Any,
+                         *,
+                         system_prompt: Optional[str] = None,
+                         gen_config: Optional[Dict[str, Any]] = None,
                          ) -> AsyncGenerator[str, None]:
         """
         Generate text from audio message with streaming.

@@ -47,13 +47,13 @@ class GeminiProvider(BaseSTTProvider):
         else:
             raise ValueError(f"Unsupported data type: {message.data_type}")
         
-    async def stt(self, formatted_data: List[types.Content]) -> str:
+    async def stt(self, formatted_data: List[types.Content], *, system_prompt: Optional[str] = None, gen_config: Optional[Dict[str, Any]] = None) -> str:
         response = await self.client.aio.models.generate_content(
             model=self.model,
             contents=formatted_data,
             config=types.GenerateContentConfig(
-                system_instruction=self.system_prompt,
-                **self.stt_gen_config
+                system_instruction=system_prompt or self.system_prompt,
+                **(gen_config if gen_config is not None else (self.stt_gen_config or {}))
             ),
         )
         if isinstance(response, types.GenerateContentResponse):
@@ -62,12 +62,13 @@ class GeminiProvider(BaseSTTProvider):
             raise ValueError(f"Unsupported response type: {type(response)}")
     
 
-    async def stt_stream(self, formatted_data: List[types.Content]) -> AsyncGenerator[str, None]:
+    async def stt_stream(self, formatted_data: List[types.Content], *, system_prompt: Optional[str] = None, gen_config: Optional[Dict[str, Any]] = None) -> AsyncGenerator[str, None]:
         async for chunk in self.client.aio.models.generate_content_stream(
             model=self.model,
             contents=formatted_data,
             config=types.GenerateContentConfig(
-                **self.stt_gen_config
+                system_instruction=system_prompt or self.system_prompt,
+                **(gen_config if gen_config is not None else (self.stt_gen_config or {}))
             ),
         ):
             if isinstance(chunk, types.GenerateContentResponse):
