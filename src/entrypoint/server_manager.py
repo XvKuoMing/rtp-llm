@@ -357,8 +357,8 @@ class ServerManager:
         server = self.__servers[uid]
         server.agent.update(
             system_prompt=system_prompt,
-            tts_gen_config=tts_gen_config,
-            stt_gen_config=stt_gen_config,
+            tts_config=tts_gen_config,
+            stt_config=stt_gen_config,
         )
 
     def update_providers_config(self, providers_config: Dict[str, Any]):
