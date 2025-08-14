@@ -110,7 +110,7 @@ class Server:
         if first_message is not None and self.adapter.peer_is_configured:
             logger.info(f"Speaking first message: {first_message}")
             self.speaking = asyncio.create_task(self.speak(first_message))
-            await self.agent.add_message(first_message, is_user=True, is_audio=False)
+            await self.agent.add_message(first_message, is_user=False, is_audio=False)
             first_message = None
         
 
@@ -130,7 +130,7 @@ class Server:
                     if first_message and self.adapter.peer_is_configured:
                         logger.info(f"Speaking first message: {first_message}")
                         self.speaking = asyncio.create_task(self.speak(first_message))
-                        await self.agent.add_message(first_message, is_user=True, is_audio=False)
+                        await self.agent.add_message(first_message, is_user=False, is_audio=False)
                         first_message = None
                         # continue # saving user speech anyway
                     
