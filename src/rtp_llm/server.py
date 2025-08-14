@@ -125,14 +125,16 @@ class Server:
                     await asyncio.sleep(self.__silence_step)  # 10ms delay
 
                 async with self.answer_lock:
-                    is_speaking = self.speaking is not None and not self.speaking.done()
+                    # is_speaking = self.speaking is not None and not self.speaking.done()
 
                     if first_message and self.adapter.peer_is_configured:
                         logger.info(f"Speaking first message: {first_message}")
                         self.speaking = asyncio.create_task(self.speak(first_message))
                         await self.agent.add_message(first_message, is_user=True, is_audio=False)
                         first_message = None
-                        continue
+                        # continue # saving user speech anyway
+                    
+                    is_speaking = self.speaking is not None and not self.speaking.done()
 
                     await self.audio_buffer.add_frame(audio)
                     await self.audio_logger.log_user(audio)
