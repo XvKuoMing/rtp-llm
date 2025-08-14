@@ -185,3 +185,10 @@ async def adjust_volume_pcm16(pcm16: bytes, volume_factor: float) -> bytes:
     except Exception as e:
         logger.error(f"Error adjusting volume: {e}")
         return pcm16  # Return original data if error occurs
+
+
+async def generate_silence_pcm16(sample_rate: int, duration_sec: float) -> bytes:
+    """generate silence pcm16"""
+    silence_samples = int(sample_rate * duration_sec)
+    silence_bytes = silence_samples * 2 # 2 bytes per sample for PCM16
+    return b'\x00' * silence_bytes

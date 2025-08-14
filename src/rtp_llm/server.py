@@ -9,7 +9,7 @@ from .buffer import BaseAudioBuffer
 from .flow import BaseChatFlowManager
 from .agents import VoiceAgent
 from .vad import BaseVAD
-from .utils.audio_processing import pcm2wav, resample_pcm16, adjust_volume_pcm16
+from .utils.audio_processing import pcm2wav, resample_pcm16, adjust_volume_pcm16, generate_silence_pcm16
 from .audio_logger import AudioLogger
 from .callbacks import BaseCallback, NullCallback
 from .cache import BaseAudioCache, NullAudioCache
@@ -76,6 +76,7 @@ class Server:
 
         # internal
         self.__last_ai_pcm16_chunks = []
+        self.__silence_step = 0.01 # 10ms
     
     async def run(self, 
                   first_message: Optional[str] = None, 
@@ -119,9 +120,9 @@ class Server:
             try:
                 audio = await self.adapter.receive_audio() # produces pcm16
                 if audio is None:
-                    # Small delay to prevent busy waiting when no audio is received
-                    await asyncio.sleep(0.01)  # 10ms delay
-                    continue
+                    # when no audio is received, considering it as silence
+                    audio = await generate_silence_pcm16(self.adapter.sample_rate, self.__silence_step)
+                    await asyncio.sleep(self.__silence_step)  # 10ms delay
 
                 async with self.answer_lock:
                     is_speaking = self.speaking is not None and not self.speaking.done()
@@ -189,7 +190,7 @@ class Server:
             logger.info(f"STT response: {response}")
             response_transformation = await self.callback.on_response(self.uid, response)
             speech_text = response_transformation.text if response_transformation.text else response
-            await self.speak(speech_text)
+            await self.speak(speech_text) #TODO: add the ability to actually skip the speaking if told so
             if response_transformation.post_action:
                 # await response_transformation.post_action
                 asyncio.create_task(response_transformation.post_action) # fire and forget
@@ -282,17 +283,6 @@ class Server:
             asyncio.create_task(self.callback.on_finish(self.uid)) # fire and forget
             self.uid = None
             self.callback = None
-
-    def update_agent_config(self,
-                            *,
-                            system_prompt: Optional[str] = None,
-                            tts_gen_config: Optional[Dict[str, Any]] = None,
-                            stt_gen_config: Optional[Dict[str, Any]] = None) -> None:
-        self.agent.update(
-            system_prompt=system_prompt,
-            tts_config=tts_gen_config,
-            stt_config=stt_gen_config,
-        )
 
 
 
