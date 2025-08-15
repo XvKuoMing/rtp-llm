@@ -163,14 +163,14 @@ class Server:
                             self.speaking.cancel()
                         logger.info(f"Answering to the user; max_time_reached: {max_time_reached}, need_run_agent: {need_run_agent}")
                         buffer_audio = await self.audio_buffer.get_frames() # update the buffer to include last arrived frames
-                        await self.audio_logger.log_user(audio)
+                        await self.audio_logger.log_user(buffer_audio)
                         self.speaking = asyncio.create_task(self.answer(buffer_audio))
                         self.flow_manager.reset()
                         self.audio_buffer.clear()
                         self.processed_bytes = 0
                     else:
                         pass # later, we will implement silence sending
-                    
+
             except Exception as e:
                 logger.error(f"Error in server loop: {e}")
                 asyncio.create_task(self.callback.on_error(self.uid, e)) # fire and forget

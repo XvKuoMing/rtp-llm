@@ -3,6 +3,7 @@ from .history import BaseChatHistory
 from typing import List, AsyncGenerator, Optional, Any, Dict, Union, Literal, Callable
 from pydantic import BaseModel, Field
 import logging
+import inspect
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -313,7 +314,7 @@ class VoiceAgent:
 
     async def tts_stream_to(self, 
                             text, 
-                            coro_factory: Callable[[None], AsyncGenerator[bytes, None]], 
+                            coro_factory: Callable[[], AsyncGenerator[None, bytes]], 
                             try_backup: bool = True):
         """
         Convert text to audio using the tts_provider.
@@ -323,7 +324,7 @@ class VoiceAgent:
         """
         # init coro
         coro = coro_factory()
-        if not isinstance(coro, AsyncGenerator):
+        if not inspect.isasyncgen(coro):
             raise ValueError("coro_factory must return an AsyncGenerator")
         await coro.asend(None)
 
@@ -337,8 +338,7 @@ class VoiceAgent:
             if try_backup and self.backup_tts_providers:
                 logger.error(f"Error while streaming tts to {coro}: {e}; trying backup")
                 await self.rotate_tts_provider()
-                coro = coro_factory()
-                await self.tts_stream_to(text, coro, try_backup=False)
+                await self.tts_stream_to(text, coro_factory, try_backup=False)
             else:
                 logger.error(f"Error while streaming tts to {coro}: {e}; no backup available")
                 raise
