@@ -41,7 +41,9 @@ class ChatHistoryLimiter(BaseChatHistory):
         assert formatter is not None, "Formatter cannot be None"
         if self.limit <= 0:
             return []
-        if self._last_formatted_func is None or self._last_formatted_func.__name__ != formatter.__name__:
+        # Compare the actual formatter function/method, not just the name
+        # This ensures we re-format when switching between different provider instances
+        if self._last_formatted_func is None or self._last_formatted_func != formatter:
             self._last_formatted_func = formatter
             self.__last_formatted_messages = [await formatter(msg) for msg in self.__messages]
         return self.__last_formatted_messages

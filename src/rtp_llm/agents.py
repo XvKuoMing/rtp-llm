@@ -126,15 +126,17 @@ class VoiceAgent:
             raise Exception(f"No backup providers for type: {provider_type} exist")
         try:
             if provider_type == "stt":
-                self.backup_stt_providers.pop(0)
-                self.backup_stt_providers.append(self.__stt_provider)
-                new_provider = self.backup_stt_providers[0]
-                self.__stt_provider = new_provider
+                old_primary = self.__stt_provider
+                next_primary = self.backup_stt_providers.pop(0)
+                self.__stt_provider = next_primary
+                self.backup_stt_providers.append(old_primary)
+                new_provider = next_primary
             else:
-                self.backup_tts_providers.pop(0)
-                self.backup_tts_providers.append(self.__tts_provider)
-                new_provider = self.backup_tts_providers[0]
-                self.__tts_provider = new_provider
+                old_primary = self.__tts_provider
+                next_primary = self.backup_tts_providers.pop(0)
+                self.__tts_provider = next_primary
+                self.backup_tts_providers.append(old_primary)
+                new_provider = next_primary
             
             logger.info(f"Rotated {provider_type} provider to {new_provider.__class__.__name__}")
         except IndexError:

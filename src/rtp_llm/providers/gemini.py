@@ -39,10 +39,15 @@ class GeminiProvider(BaseSTTProvider):
         return {"temperature", "top_p", "top_k"}
         
     async def format(self, message: Message) -> Any:
+        # Map roles to Gemini accepted values
+        role = message.role
+        if role == "assistant":
+            role = "model"
+
         if message.data_type == "text":
-            return types.Content(role=message.role, parts=[types.Part(text=message.content)])
+            return types.Content(role=role, parts=[types.Part(text=message.content)])
         elif message.data_type == "audio":
-            return types.Content(role=message.role, 
+            return types.Content(role=role,
                                  parts=[types.Part.from_bytes(data=message.content, mime_type="audio/wav")])
         else:
             raise ValueError(f"Unsupported data type: {message.data_type}")
