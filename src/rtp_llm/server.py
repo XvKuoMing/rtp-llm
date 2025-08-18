@@ -143,15 +143,18 @@ class Server:
                     
                     is_speaking = self.speaking is not None and not self.speaking.done()
 
+                    if is_speaking and not allow_interruptions:
+                        await self.audio_logger.log_user(audio)
+                        continue # do not store any user speech, but log it
+
                     await self.audio_buffer.add_frame(audio)
+                    await self.audio_logger.log_user(audio)
 
                     buffer_audio = await self.audio_buffer.get_frames()
+                    
                     if len(buffer_audio) < self.processed_bytes + self.vad_interval_bytes: # ensure to not check the same interval multiple times
                         continue
-                    if is_speaking and not allow_interruptions:
-                        #NOTE: user speech will be saved in the buffer but not processed
-                        self.processed_bytes += self.vad_interval_bytes
-                        continue
+                    
                     last_chunk_audio = buffer_audio[self.processed_bytes:self.processed_bytes + self.vad_interval_bytes] # cutting last interval of audio
                     self.processed_bytes += self.vad_interval_bytes
 
@@ -165,12 +168,11 @@ class Server:
                     if max_time_reached or need_run_agent:
                         if need_run_agent:
                             await self.audio_logger.beep() # NOTE: this is a hack for audio logging to make the user aware that the agent started answering
-                        if is_speaking:
-                            # allowing interruptions
-                            self.speaking.cancel()
+                            if is_speaking:
+                                # allowing interruptions only if agent is used directly
+                                self.speaking.cancel()
                         logger.info(f"Answering to the user; max_time_reached: {max_time_reached}, need_run_agent: {need_run_agent}")
                         buffer_audio = await self.audio_buffer.get_frames() # update the buffer to include last arrived frames
-                        await self.audio_logger.log_user(buffer_audio)
                         self.speaking = asyncio.create_task(self.answer(buffer_audio))
                         self.flow_manager.reset()
                         self.audio_buffer.clear()
