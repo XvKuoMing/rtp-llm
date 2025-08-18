@@ -320,7 +320,7 @@ class Server:
         if self.uid is not None and self.callback is not None:
             asyncio.create_task(self.callback.on_finish(self.uid)) # fire and forget
             self.uid = None
-            self.callback = None
+            self.callback = NullCallback()
 
 
 
