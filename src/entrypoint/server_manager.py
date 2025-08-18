@@ -355,6 +355,7 @@ class ServerManager:
             raise NotFoundError(f"Server with uid {uid} not found")
         
         server = self.__servers[uid]
+        logger.info(f"Updating agent for server {uid} with params: {str(system_prompt)} {str(tts_gen_config)} {str(stt_gen_config)}")
         server.agent.update(
             system_prompt=system_prompt,
             tts_config=tts_gen_config,
