@@ -26,6 +26,9 @@ class AudioLogger:
         self.chunks: List[AudioChunk] = []
         self.start_time = None  # Track when logging started
         self.all_chunks: List[AudioChunk] = []  # Keep all chunks ever logged
+        # Logical clocks per stream to maintain accurate timeline regardless of bursty arrivals
+        self.user_time_cursor = None
+        self.ai_time_cursor = None
     
 
     async def get_last_ai_chunks(self) -> List[bytes]:
@@ -40,13 +43,34 @@ class AudioLogger:
 
     async def log(self, audio: bytes, is_user: bool):
         current_time = time.time()
-        if self.start_time is None:
-            self.start_time = current_time
-        
-        audio_chunk = AudioChunk(audio=audio, timestamp=current_time, is_user=is_user)
+        # Duration in seconds for this chunk (PCM16: 2 bytes per sample)
+        duration_sec = (len(audio) / 2) / self.sample_rate if self.sample_rate > 0 else 0.0
+
         with self.lock:
+            if self.start_time is None:
+                self.start_time = current_time
+
+            # Choose and update the appropriate logical clock
+            if is_user:
+                stream_cursor = self.user_time_cursor
+            else:
+                stream_cursor = self.ai_time_cursor
+
+            # Ensure non-decreasing placement: if chunks arrive faster than real-time,
+            # place this one starting at the last known end; otherwise use current wall time
+            start_timestamp = stream_cursor if (stream_cursor is not None and stream_cursor > current_time) else current_time
+
+            # Create and store chunk
+            audio_chunk = AudioChunk(audio=audio, timestamp=start_timestamp, is_user=is_user)
             self.chunks.append(audio_chunk)
             self.all_chunks.append(audio_chunk)  # Also add to permanent history
+
+            # Advance logical clock to the end of this chunk
+            new_cursor = start_timestamp + duration_sec
+            if is_user:
+                self.user_time_cursor = new_cursor
+            else:
+                self.ai_time_cursor = new_cursor
     
     async def log_user(self, pcm16_frames: bytes):
         await self.log(pcm16_frames, is_user=True)
@@ -187,3 +211,5 @@ class AudioLogger:
             self.chunks.clear()
             self.all_chunks.clear()
             self.start_time = None
+            self.user_time_cursor = None
+            self.ai_time_cursor = None
