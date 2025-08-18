@@ -8,6 +8,9 @@ from ..models import (
     StartServerResponse,
     StopServerRequest,
     UpdateAgentRequest,
+    PauseServerRequest,
+    ResumeServerRequest,
+    PauseResumeResponse,
 )
 from ..server_manager import ServerManager
 from .dependencies import get_server_manager
@@ -50,3 +53,25 @@ async def stop_server(request: StopServerRequest, manager: ServerManager = Depen
     """Stop a server instance"""
     manager.stop_server(request.uid)
     return Response(success=True)
+
+
+@router.post("/pause", response_model=PauseResumeResponse, summary="Pause a server instance")
+async def pause_server(request: PauseServerRequest, manager: ServerManager = Depends(get_server_manager)):
+    """Pause a server instance - stops the main loop but preserves all state"""
+    success = manager.pause_server(request.uid)
+    return PauseResumeResponse(
+        success=success,
+        message="Server paused successfully" if success else "Failed to pause server or server not found",
+        uid=request.uid
+    )
+
+
+@router.post("/resume", response_model=PauseResumeResponse, summary="Resume a server instance")
+async def resume_server(request: ResumeServerRequest, manager: ServerManager = Depends(get_server_manager)):
+    """Resume a paused server instance - restarts the main loop from where it was paused"""
+    success = manager.resume_server(request.uid)
+    return PauseResumeResponse(
+        success=success,
+        message="Server resumed successfully" if success else "Failed to resume server or server not found",
+        uid=request.uid
+    )

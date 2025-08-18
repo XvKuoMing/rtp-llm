@@ -361,6 +361,34 @@ class ServerManager:
             stt_config=stt_gen_config,
         )
 
+    def pause_server(self, uid: Union[str, int]) -> bool:
+        """
+        Pause a server instance - stops the main loop but preserves all state.
+        Returns True if successful, False if server not found.
+        """
+        if uid not in self.__servers:
+            logger.warning(f"Server with uid {uid} not found for pause operation")
+            return False
+        
+        server = self.__servers[uid]
+        server.pause()
+        logger.info(f"Server {uid} paused successfully")
+        return True
+
+    def resume_server(self, uid: Union[str, int]) -> bool:
+        """
+        Resume a paused server instance - restarts the main loop from where it was paused.
+        Returns True if successful, False if server not found.
+        """
+        if uid not in self.__servers:
+            logger.warning(f"Server with uid {uid} not found for resume operation")
+            return False
+        
+        server = self.__servers[uid]
+        server.resume()
+        logger.info(f"Server {uid} resumed successfully")
+        return True
+
     def update_providers_config(self, providers_config: Dict[str, Any]):
         self.__load_providers(providers_config)
 

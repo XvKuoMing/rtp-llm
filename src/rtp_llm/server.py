@@ -66,6 +66,10 @@ class Server:
         self.uid: Optional[int | str] = None
         self.callback: Optional[BaseCallback] = None
 
+        # pause/resume state management
+        self.__paused = asyncio.Event()
+        self.__paused.set()  # Initially not paused
+
         # static state management
         self.answer_lock = asyncio.Lock()
 
@@ -118,6 +122,9 @@ class Server:
 
         while True:
             try:
+                # Wait for resume signal if paused
+                await self.__paused.wait()
+                
                 audio = await self.adapter.receive_audio() # produces pcm16
                 if audio is None:
                     # when no audio is received, considering it as silence
@@ -272,6 +279,30 @@ class Server:
             await self.adapter.send_audio(pcm16_chunk)
             await self.audio_logger.log_ai(pcm16_chunk) # log without any processing
 
+    
+    def pause(self):
+        """
+        Pause the server - stops the main loop but preserves all state.
+        Does not delete any buffers, audio, or configuration.
+        """
+        if self.__paused.is_set():
+            logger.info("Pausing server")
+            self.__paused.clear()  # Clear the event to pause the loop
+        else:
+            logger.info("Server is already paused")
+    
+    def resume(self):
+        """
+        Resume the server - restarts the main loop from where it was paused.
+        All state, buffers, and configuration are preserved.
+        """
+        if not self.__paused.is_set():
+            logger.info("Resuming server")
+            self.__paused.set()  # Set the event to resume the loop
+        else:
+            logger.info("Server is not paused")
+
+    
     def close(self):
         logger.info("Closing server")
         self.adapter.close()
@@ -282,6 +313,10 @@ class Server:
         self.processed_bytes = 0
         self.last_response_time = None
         self.audio_logger.clear()
+        
+        # Reset pause state
+        self.__paused.set()
+        
         if self.uid is not None and self.callback is not None:
             asyncio.create_task(self.callback.on_finish(self.uid)) # fire and forget
             self.uid = None

@@ -42,3 +42,17 @@ class UpdateAgentRequest(BaseModel):
     system_prompt: Optional[str] = None
     tts_gen_config: Optional[Dict[str, Any]] = Field(default_factory=dict)
     stt_gen_config: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
+
+class PauseServerRequest(BaseModel):
+    uid: Union[str, int]
+
+
+class ResumeServerRequest(BaseModel):
+    uid: Union[str, int]
+
+
+class PauseResumeResponse(BaseModel):
+    success: bool
+    message: str
+    uid: Union[str, int]
