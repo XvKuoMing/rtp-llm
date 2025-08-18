@@ -96,7 +96,7 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
         """
         Get the stt_config info of the provider -> name and default value
         """
-        return {"temperature", "top_p", "web_search"}
+        return {"temperature", "top_p"}
     
     def get_tts_gen_config_info(self) -> Set[str]:  
         """

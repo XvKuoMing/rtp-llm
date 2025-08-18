@@ -27,14 +27,7 @@ class GeminiProvider(BaseSTTProvider):
                 api_key=self.api_key, 
                 http_options=types.HttpOptions(base_url=self.base_url)
             )
-        
-        self.web_search_tool = None
-        if "web_search" in self.stt_gen_config and self.stt_gen_config["web_search"]:
-            self.web_search_tool = types.Tool(google_search=types.GoogleSearch())
-        self.stt_gen_config.pop("web_search", None) # poping anyway
-
-    
-    
+            
     def get_stt_gen_config_info(self) -> Set[str]:
         """
         Get the stt_config info of the provider -> name and default value
@@ -44,11 +37,21 @@ class GeminiProvider(BaseSTTProvider):
     
     def __transform_gen_config(self, gen_config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         _gen_config = gen_config or self.stt_gen_config
-        if self.web_search_tool is not None:
-            if "tools" not in _gen_config:
-                _gen_config["tools"] = []
-            _gen_config["tools"].append(self.web_search_tool)
+        web_search = _gen_config.pop("web_search", False)
+        build_in_tools = []
+        if web_search:
+            build_in_tools.append(types.Tool(google_search=types.GoogleSearch()))
+        
+        if build_in_tools:
+            if "tools" in _gen_config:
+                if not isinstance(_gen_config["tools"], list):
+                    raise ValueError("tools must be a list")
+                _gen_config["tools"].extend(build_in_tools)
+            else:
+                _gen_config["tools"] = build_in_tools
+        
         return _gen_config
+
     
     async def format(self, message: Message) -> Any:
         # Map roles to Gemini accepted values
