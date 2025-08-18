@@ -34,11 +34,6 @@ class AudioOpenAIMessage(OpenAIMessage):
         super().__init__(role, content, "audio")
 
 
-
-
-valid_tts_config = {"speed", "instructions"}
-valid_stt_config = {"temperature", "top_p"}
-
 class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
 
     pcm_response_format = "pcm" # openai pcm format for tts
@@ -101,7 +96,7 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
         """
         Get the stt_config info of the provider -> name and default value
         """
-        return {"temperature", "top_p"}
+        return {"temperature", "top_p", "web_search"}
     
     def get_tts_gen_config_info(self) -> Set[str]:  
         """

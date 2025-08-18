@@ -4,9 +4,6 @@ from google import genai
 from google.genai import types
 from typing import Optional, Any, List, AsyncGenerator, Dict, Set
 
-valid_stt_config = {"temperature", "top_p", "top_k"}
-
-
 class GeminiProvider(BaseSTTProvider):
     """
     it provides only stt capabilities
@@ -30,14 +27,29 @@ class GeminiProvider(BaseSTTProvider):
                 api_key=self.api_key, 
                 http_options=types.HttpOptions(base_url=self.base_url)
             )
+        
+        self.web_search_tool = None
+        if "web_search" in self.stt_gen_config and self.stt_gen_config["web_search"]:
+            self.web_search_tool = types.Tool(google_search=types.GoogleSearch())
+        self.stt_gen_config.pop("web_search", None) # poping anyway
+
     
     
     def get_stt_gen_config_info(self) -> Set[str]:
         """
         Get the stt_config info of the provider -> name and default value
         """
-        return {"temperature", "top_p", "top_k"}
+        return {"temperature", "top_p", "top_k", "web_search"}
         
+    
+    def __transform_gen_config(self, gen_config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        _gen_config = gen_config or self.stt_gen_config
+        if self.web_search_tool is not None:
+            if "tools" not in _gen_config:
+                _gen_config["tools"] = []
+            _gen_config["tools"].append(self.web_search_tool)
+        return _gen_config
+    
     async def format(self, message: Message) -> Any:
         # Map roles to Gemini accepted values
         role = message.role
@@ -52,13 +64,14 @@ class GeminiProvider(BaseSTTProvider):
         else:
             raise ValueError(f"Unsupported data type: {message.data_type}")
         
+    
     async def stt(self, formatted_data: List[types.Content], *, system_prompt: Optional[str] = None, gen_config: Optional[Dict[str, Any]] = None) -> str:
         response = await self.client.aio.models.generate_content(
             model=self.model,
             contents=formatted_data,
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt or self.system_prompt,
-                **(gen_config if gen_config is not None else (self.stt_gen_config or {}))
+                **self.__transform_gen_config(gen_config)
             ),
         )
         if isinstance(response, types.GenerateContentResponse):
@@ -73,7 +86,7 @@ class GeminiProvider(BaseSTTProvider):
             contents=formatted_data,
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt or self.system_prompt,
-                **(gen_config if gen_config is not None else (self.stt_gen_config or {}))
+                **self.__transform_gen_config(gen_config)
             ),
         ):
             if isinstance(chunk, types.GenerateContentResponse):
