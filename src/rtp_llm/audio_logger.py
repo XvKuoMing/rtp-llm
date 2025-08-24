@@ -1,10 +1,10 @@
 import os
 import wave
-import threading
 import math
 import struct
+import asyncio
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List
 import time
 
 AUDIO_LOGS_DIR = "audio_logs"
@@ -22,7 +22,7 @@ class AudioLogger:
         os.makedirs(AUDIO_LOGS_DIR, exist_ok=True)
         self.uid = f"{uid}_conversation_{time.time()}"
         self.sample_rate = sample_rate
-        self.lock = threading.Lock()
+        self.lock = asyncio.Lock()
         self.chunks: List[AudioChunk] = []
         self.start_time = None  # Track when logging started
         self.all_chunks: List[AudioChunk] = []  # Keep all chunks ever logged
@@ -32,21 +32,19 @@ class AudioLogger:
     
 
     async def get_last_ai_chunks(self) -> List[bytes]:
-        with self.lock:
-            buffer = [chunk.audio for chunk in self.chunks if not chunk.is_user]
-            return buffer
+        async with self.lock:
+            return [chunk.audio for chunk in self.chunks if not chunk.is_user]
         
     async def get_last_user_chunks(self) -> List[bytes]:
-        with self.lock:
-            buffer = [chunk.audio for chunk in self.chunks if chunk.is_user]
-            return buffer
+        async with self.lock:
+            return [chunk.audio for chunk in self.chunks if chunk.is_user]
 
     async def log(self, audio: bytes, is_user: bool):
         current_time = time.time()
         # Duration in seconds for this chunk (PCM16: 2 bytes per sample)
         duration_sec = (len(audio) / 2) / self.sample_rate if self.sample_rate > 0 else 0.0
 
-        with self.lock:
+        async with self.lock:
             if self.start_time is None:
                 self.start_time = current_time
 
@@ -168,48 +166,47 @@ class AudioLogger:
         return self._samples_to_bytes(timeline)
     
     async def save(self):
-        """saves current state of the audio logger to a single WAV file containing mixed user and AI audio"""
-        with self.lock:
+        """Save current state of the audio logger to a single WAV file.
+
+        The heavy work (mixing and file I/O) is executed in a worker thread so
+        it doesn't block the event loop, which is critical for real-time audio
+        handling (e.g. RTP).
+        """
+        async with self.lock:
             if not self.all_chunks:
                 return
-                
-            # Use a fixed filename for the user
+            
+            # Copy chunks so we can release the lock before heavy processing
+            chunks_copy = list(self.all_chunks)
             filename = f"{self.uid}.wav"
             filepath = os.path.join(AUDIO_LOGS_DIR, filename)
-            
-            # Create mixed audio timeline from ALL chunks
-            mixed_audio_data = self._create_timeline_audio(self.all_chunks)
-            
-            if mixed_audio_data:
-                # Write the entire mixed audio (not append)
-                await self._write_mixed_audio_to_wav(mixed_audio_data, filepath)
-            
+
             # Clear only the recent chunks, keep all_chunks for future saves
             self.chunks.clear()
+
+        # Mix and write outside the lock
+        mixed_audio_data = await asyncio.to_thread(self._create_timeline_audio, chunks_copy)
+        if mixed_audio_data:
+            await asyncio.to_thread(self._write_mixed_audio_to_wav, mixed_audio_data, filepath)
     
-    async def _write_mixed_audio_to_wav(self, audio_data: bytes, filepath: str):
-        """Write mixed audio data to a WAV file (overwriting existing)"""
+    def _write_mixed_audio_to_wav(self, audio_data: bytes, filepath: str):
+        """Write mixed audio data to a WAV file (overwriting existing)."""
         if not audio_data:
             return
             
         try:
-            # Write audio to file (overwriting existing)
             with wave.open(filepath, 'wb') as wav_file:
-                # Set WAV parameters
                 wav_file.setnchannels(1)  # Mono
                 wav_file.setsampwidth(2)  # 16-bit (2 bytes per sample)
                 wav_file.setframerate(self.sample_rate)
-                
-                # Write all audio data
                 wav_file.writeframes(audio_data)
                     
         except Exception as e:
             print(f"Error writing audio to {filepath}: {e}")
     
     def clear(self):
-        with self.lock:
-            self.chunks.clear()
-            self.all_chunks.clear()
-            self.start_time = None
-            self.user_time_cursor = None
-            self.ai_time_cursor = None
+        self.chunks.clear()
+        self.all_chunks.clear()
+        self.start_time = None
+        self.user_time_cursor = None
+        self.ai_time_cursor = None
