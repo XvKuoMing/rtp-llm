@@ -132,7 +132,6 @@ class Server:
                     await asyncio.sleep(self.__silence_step)  # 10ms delay
 
                 async with self.answer_lock:
-                    # is_speaking = self.speaking is not None and not self.speaking.done()
 
                     if first_message and self.adapter.peer_is_configured:
                         logger.info(f"Speaking first message: {first_message}")
@@ -144,11 +143,11 @@ class Server:
                     is_speaking = self.speaking is not None and not self.speaking.done()
 
                     if is_speaking and not allow_interruptions:
-                        await self.audio_logger.log_user(audio)
+                        asyncio.create_task(self.audio_logger.log_user(audio))
                         continue # do not store any user speech, but log it
 
                     await self.audio_buffer.add_frame(audio)
-                    await self.audio_logger.log_user(audio)
+                    asyncio.create_task(self.audio_logger.log_user(audio))
 
                     buffer_audio = await self.audio_buffer.get_frames()
                     
@@ -171,7 +170,7 @@ class Server:
                     
                     if max_time_reached or need_run_agent:
                         if need_run_agent:
-                            await self.audio_logger.beep() # NOTE: this is a hack for audio logging to make the user aware that the agent started answering
+                            asyncio.create_task(self.audio_logger.beep())
                             if is_speaking:
                                 # allowing interruptions only if agent is used directly
                                 self.speaking.cancel()
@@ -282,7 +281,7 @@ class Server:
                 )
 
             await self.adapter.send_audio(pcm16_chunk)
-            await self.audio_logger.log_ai(pcm16_chunk) # log without any processing
+            asyncio.create_task(self.audio_logger.log_ai(pcm16_chunk)) # log without any processing
 
     
     def pause(self):
