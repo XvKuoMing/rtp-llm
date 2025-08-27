@@ -9,7 +9,7 @@ from .buffer import BaseAudioBuffer
 from .flow import BaseChatFlowManager
 from .agents import VoiceAgent
 from .vad import BaseVAD
-from .utils.audio_processing import pcm2wav, resample_pcm16, adjust_volume_pcm16, generate_silence_pcm16
+from .utils.audio_processing import pcm2wav, resample_pcm16, adjust_volume_pcm16
 from .audio_logger import AudioLogger
 from .callbacks import BaseCallback, NullCallback
 from .cache import BaseAudioCache, NullAudioCache
@@ -127,9 +127,8 @@ class Server:
                 
                 audio = await self.adapter.receive_audio() # produces pcm16
                 if audio is None:
-                    # when no audio is received, considering it as silence
-                    audio = await generate_silence_pcm16(self.adapter.sample_rate, self.__silence_step)
-                    await asyncio.sleep(self.__silence_step)  # 10ms delay
+                    # when no audio is received, continue
+                    continue
 
                 async with self.answer_lock:
 
