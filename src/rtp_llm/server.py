@@ -160,9 +160,13 @@ class Server:
 
                     vad_state = await self.vad.detect(last_chunk_audio)
 
-                    max_time_reached = self.last_response_time is not None \
-                                        and self.max_wait_time > 0 \
-                                        and (time.time() - self.last_response_time) > self.max_wait_time
+                    max_time_reached = (
+                        not is_speaking 
+                        and self.last_response_time is not None 
+                        and self.max_wait_time > 0 
+                        and (time.time() - self.last_response_time) > self.max_wait_time
+                    )
+                    
                     need_run_agent = await self.flow_manager.run_agent(vad_state)
                     
                     if max_time_reached or need_run_agent:
@@ -174,7 +178,6 @@ class Server:
                         logger.info(f"Answering to the user; max_time_reached: {max_time_reached}, need_run_agent: {need_run_agent}")
                         buffer_audio = await self.audio_buffer.get_frames() # update the buffer to include last arrived frames
                         self.speaking = asyncio.create_task(self.answer(buffer_audio))
-                        self.flow_manager.reset()
                         self.audio_buffer.clear()
                         self.processed_bytes = 0
                     else:

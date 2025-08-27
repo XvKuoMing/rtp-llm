@@ -4,7 +4,6 @@ from .base import BaseTTSProvider, BaseSTTProvider, Message
 from openai import AsyncOpenAI
 from openai.types.audio import Transcription
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
-# from openai.types import AsyncResponseContextManager, AsyncStreamedBinaryAPIResponse, HttpxBinaryResponseContent
 
 from typing import AsyncGenerator, Any, Optional, Union, List, Dict, Set
 import base64
@@ -164,8 +163,6 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
             voice=self.tts_voice,
             **(gen_config if gen_config is not None else (self.tts_gen_config or {}))
         )
-        # if not isinstance(response, HttpxBinaryResponseContent):
-            # raise ValueError(f"Unsupported response type: {type(response)}")
         return response.content
 
     async def tts_stream(self, text: str, *, gen_config: Optional[Dict[str, Any]] = None) -> AsyncGenerator[bytes, None]:
@@ -178,8 +175,6 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
             voice=self.tts_voice,
             **(gen_config if gen_config is not None else (self.tts_gen_config or {}))
         ) as response:
-            # if not isinstance(response, AsyncResponseContextManager[AsyncStreamedBinaryAPIResponse]):
-            #     raise ValueError(f"Unsupported response type: {type(response)}")
             async for chunk in response.iter_bytes():
                 yield chunk
 
