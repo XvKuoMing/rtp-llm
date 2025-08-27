@@ -143,8 +143,7 @@ class Server:
                     is_speaking = self.speaking is not None and not self.speaking.done()
 
                     if is_speaking and not allow_interruptions:
-                        asyncio.create_task(self.audio_logger.log_user(audio))
-                        continue # do not store any user speech, but log it
+                        continue # do not store any user speech
 
                     await self.audio_buffer.add_frame(audio)
                     asyncio.create_task(self.audio_logger.log_user(audio))
