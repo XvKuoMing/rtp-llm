@@ -250,12 +250,17 @@ class RTPAdapter(Adapter):
             first_chunk = False
             
             try:
-                self.socket.sendto(rtp_packet.as_bytes, (self.peer_ip, self.peer_port))
-                
+                loop = asyncio.get_running_loop()
+                try:
+                    await loop.sock_sendto(self.socket, rtp_packet.as_bytes, (self.peer_ip, self.peer_port))
+                except (AttributeError, NotImplementedError):
+                    # Fallback for platforms/loops without sock_sendto support
+                    await asyncio.to_thread(self.socket.sendto, rtp_packet.as_bytes, (self.peer_ip, self.peer_port))
+
                 # Use a more precise timing based on actual samples
                 chunk_duration = samples_in_chunk / self.sample_rate
                 sleep_duration = min(chunk_duration, RTP_INTER_PACKET_DELAY)
-                
+
                 await asyncio.sleep(sleep_duration)
             except Exception as e:
                 logger.error(f"Error sending RTP packet: {e}")
@@ -272,7 +277,12 @@ class RTPAdapter(Adapter):
 
     async def receive_audio(self) -> Optional[bytes]:
         try:
-            data, address = self.socket.recvfrom(RTP_MAX_PACKET_SIZE)
+            loop = asyncio.get_running_loop()
+            try:
+                data, address = await loop.sock_recvfrom(self.socket, RTP_MAX_PACKET_SIZE)
+            except (AttributeError, NotImplementedError):
+                # Fallback for platforms/loops without sock_recvfrom support
+                data, address = await asyncio.to_thread(self.socket.recvfrom, RTP_MAX_PACKET_SIZE)
             host_ip, host_port = address
 
             # Auto-configure peer if not set
@@ -298,11 +308,7 @@ class RTPAdapter(Adapter):
         except socket.timeout:
             return None
         except socket.error as e:
-            if e.errno == 10035:  # WSAEWOULDBLOCK on Windows
-                return None
-            elif e.errno == 11:  # EAGAIN/EWOULDBLOCK on Unix/Linux
-                return None
-            elif e.errno == 10040:  # WSAEMSGSIZE on Windows - message too large
+            if e.errno == 10040:  # WSAEMSGSIZE on Windows - message too large
                 logger.warning(f"Received RTP packet larger than buffer size ({RTP_MAX_PACKET_SIZE} bytes). Consider increasing RTP_MAX_PACKET_SIZE.")
                 return None
             logger.error(f"Socket error in receive_audio: {e}")
