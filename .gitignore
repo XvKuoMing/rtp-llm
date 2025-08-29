@@ -7,3 +7,4 @@ __pycache__/
 .pytest_cache/
 audio_logs/
 *egg-info/
+providers.json

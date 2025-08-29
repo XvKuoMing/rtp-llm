@@ -1,0 +1,35 @@
+services:
+  rtllm:
+    image: docker.io/kamasalyamov/rtllm:dev-1.2.0 # last: 1.1.5
+    env_file:
+      - .env
+    restart: unless-stopped
+    environment:
+      - RTLLM_HOST=${RTLLM_HOST:-0.0.0.0}
+      - RTLLM_PORT=${RTLLM_PORT:-8000}
+      - RTLLM_START_PORT=${RTLLM_START_PORT:-10000}
+      - RTLLM_END_PORT=${RTLLM_END_PORT:-10030}
+      - RTLLM_DEBUG=${RTLLM_DEBUG:-false}
+      
+      - RTLLM_PROVIDERS_CONFIG_PATH=${RTLLM_PROVIDERS_CONFIG_PATH:-/app/providers.json}
+      
+      - RTLLM_CORS_ALLOW_ORIGINS=${RTLLM_CORS_ALLOW_ORIGINS:-["*"]}
+      - RTLLM_CORS_ALLOW_METHODS=${RTLLM_CORS_ALLOW_METHODS:-["*"]}
+      - RTLLM_CORS_ALLOW_HEADERS=${RTLLM_CORS_ALLOW_HEADERS:-["*"]}
+      - RTLLM_CORS_ALLOW_CREDENTIALS=${RTLLM_CORS_ALLOW_CREDENTIALS:-true}
+      
+      - RTLLM_MAX_CONCURRENT_FILES=${RTLLM_MAX_CONCURRENT_FILES:-50}
+
+      - RTLLM_REDIS_ENABLED=${RTLLM_REDIS_ENABLED:-false}
+      - RTLLM_REDIS_HOST=${RTLLM_REDIS_HOST:-redis}
+      - RTLLM_REDIS_PORT=${RTLLM_REDIS_PORT:-6379}
+      - RTLLM_REDIS_DB=${RTLLM_REDIS_DB:-0}
+      - RTLLM_REDIS_PASSWORD=${RTLLM_REDIS_PASSWORD:-admin}
+      - RTLLM_REDIS_TTL_SECONDS=${RTLLM_REDIS_TTL_SECONDS:-86400}
+    ports:
+      - "${RTLLM_PORT:-8000}:${RTLLM_PORT:-8000}"
+      - "${RTLLM_START_PORT:-10000}-${RTLLM_END_PORT:-10030}:${RTLLM_START_PORT:-10000}-${RTLLM_END_PORT:-10030}/udp"
+      - "${RTLLM_START_PORT:-10000}-${RTLLM_END_PORT:-10030}:${RTLLM_START_PORT:-10000}-${RTLLM_END_PORT:-10030}"
+    volumes:
+      - ./audio_logs:/app/audio_logs
+      - ./providers.json:${RTLLM_PROVIDERS_CONFIG_PATH:-/app/providers.json}:rw

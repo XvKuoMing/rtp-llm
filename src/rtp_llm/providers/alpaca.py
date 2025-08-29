@@ -59,8 +59,9 @@ class OpenAIProvider(BaseTTSProvider, BaseSTTProvider):
         self.stt_model = stt_model
         self.tts_model = tts_model
         self.system_prompt = system_prompt or "You are a helpful assistant."
-        self.tts_gen_config = tts_gen_config
-        self.stt_gen_config = stt_gen_config
+        # Ensure configs are dictionaries, never None
+        self.tts_gen_config = tts_gen_config or {}
+        self.stt_gen_config = stt_gen_config or {}
         self.tts_voice = tts_voice or "alloy" # required for openai tts
 
         self.stt_api_key = overwrite_stt_model_api_key or api_key
